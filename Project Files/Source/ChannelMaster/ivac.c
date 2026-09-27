@@ -138,7 +138,10 @@ PORT void xvacIN(int id, double* in_tx, int bypass)
 			_InterlockedExchange(&a->vac_feed_tx, 1);
 			xrmatchOUT (a->rmatchIN, in_tx);
 			if (a->vac_combine_input)
+			{
 				combinebuff(a->mic_size, in_tx, in_tx);// , 3); //[2.10.3.6]MW0LGE new 17.11.0 version of VS started complaining about this 3, has been there 8 months
+				scalebuff(a->mic_size, in_tx, 0.5, in_tx);
+			}
 			scalebuff(a->mic_size, in_tx, a->vac_preamp, in_tx);
 		}
 		else
