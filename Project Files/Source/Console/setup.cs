@@ -1771,6 +1771,16 @@ namespace Thetis
 #endif
             }
 
+            // Force CPU is a runtime override. When it is active the three GPU
+            // checkboxes are shown disabled/unchecked, but their desired user state
+            // must remain persisted for the next hardware-rendering session.
+            if (chkForceCPURendering.Checked)
+            {
+                a["chkGpuMesh3D"] = _gpuMeshSavedState.ToString();
+                a["chkGpuComputeShaders"] = _gpuComputeSavedState.ToString();
+                a["chkGpuOverlay"] = _gpuOverlaySavedState.ToString();
+            }
+
             // add this manually because the usbbcd combo box will need this to recover previously selected
             a.Add("UsbBCDSerialNumber", m_sUsbBCDSerialNumber);
 
@@ -13104,6 +13114,7 @@ namespace Thetis
             if (initializing) return;
             Display.Pan3DEnabled = chkDisplay3DPanadapter.Checked;
             console.SyncDisplay3DPanButton(chkDisplay3DPanadapter.Checked);
+            PersistDisplayDriverOption(chkDisplay3DPanadapter);
         }
 
         private frm3DPanadapter _frm3DPanadapter = null;
@@ -19896,9 +19907,37 @@ namespace Thetis
             Display.PhasePointSize = (int)udDisplayPhasePtSize.Value;
         }
 
+        // SQ4KOU: persist the display-driver controls directly into the native
+        // Options keys used by getOptions()/SaveOptions(). This makes the state
+        // durable even when Setup is hidden or the application is closed without
+        // pressing Apply/OK.
+        private bool _suppressDisplayDriverPersistence = false;
+
+        private void PersistDisplayDriverOption(Control control)
+        {
+            if (control == null || initializing || _gettingOptions || _savingOptions ||
+                _suppressDisplayDriverPersistence || DB.ds == null)
+                return;
+
+            string value;
+            if (control is CheckBoxTS cb)
+                value = cb.Checked.ToString();
+            else if (control is ComboBoxTS combo)
+                value = combo.Text;
+            else
+                return;
+
+            Dictionary<string, string> vars = new Dictionary<string, string>();
+            vars[control.Name] = value;
+            DB.SaveVarsDictionary("Options", ref vars, true);
+            DB.WriteDB();
+        }
+
         private void chkShowFPS_CheckedChanged(object sender, EventArgs e)
         {
+            if (initializing) return;
             Display.ShowFPS = chkShowFPS.Checked;
+            PersistDisplayDriverOption(chkShowFPS);
         }
 
         private void chkSmallModeFilteronVFOs_CheckedChanged(object sender, EventArgs e)
@@ -19922,6 +19961,7 @@ namespace Thetis
             if (comboDisplayThreadPriority.SelectedIndex < 0) return; // ignore 0 or not selected
 
             console.DisplayThreadPriority = (ThreadPriority)comboDisplayThreadPriority.SelectedIndex;
+            PersistDisplayDriverOption(comboDisplayThreadPriority);
         }
 
         private void btnShowSeqLog_Click(object sender, EventArgs e)
@@ -20074,6 +20114,7 @@ namespace Thetis
                 Display.VerticalBlanks = 0;
                 MeterManager.SetVsync(false);
             }
+            PersistDisplayDriverOption(chkVSyncDX);
         }
 
         private bool _gpuMeshSavedState = false;
@@ -20085,35 +20126,45 @@ namespace Thetis
             if (initializing) return;
 
             Display.ForceCPURendering = chkForceCPURendering.Checked;
+            PersistDisplayDriverOption(chkForceCPURendering);
 
-            // forcing CPU rendering forces all GPU features to the CPU mode
-            if (chkForceCPURendering.Checked)
+            // forcing CPU rendering forces all GPU features to the CPU mode,
+            // but MUST NOT overwrite the user's saved GPU preferences.
+            _suppressDisplayDriverPersistence = true;
+            try
             {
-                _gpuMeshSavedState = chkGpuMesh3D.Checked;
-                _gpuComputeSavedState = chkGpuComputeShaders.Checked;
-                _gpuOverlaySavedState = chkGpuOverlay.Checked;
+                if (chkForceCPURendering.Checked)
+                {
+                    _gpuMeshSavedState = chkGpuMesh3D.Checked;
+                    _gpuComputeSavedState = chkGpuComputeShaders.Checked;
+                    _gpuOverlaySavedState = chkGpuOverlay.Checked;
 
-                chkGpuMesh3D.Checked = false;
-                chkGpuComputeShaders.Checked = false;
-                chkGpuOverlay.Checked = false;
+                    chkGpuMesh3D.Checked = false;
+                    chkGpuComputeShaders.Checked = false;
+                    chkGpuOverlay.Checked = false;
 
-                chkGpuMesh3D.Enabled = false;
-                chkGpuComputeShaders.Enabled = false;
-                chkGpuOverlay.Enabled = false;
+                    chkGpuMesh3D.Enabled = false;
+                    chkGpuComputeShaders.Enabled = false;
+                    chkGpuOverlay.Enabled = false;
 
-                Display.GpuMeshEnabled = false;
-                Display.GpuComputeEnabled = false;
-                Display.GpuOverlayEnabled = false;
+                    Display.GpuMeshEnabled = false;
+                    Display.GpuComputeEnabled = false;
+                    Display.GpuOverlayEnabled = false;
+                }
+                else
+                {
+                    chkGpuMesh3D.Enabled = true;
+                    chkGpuComputeShaders.Enabled = true;
+                    chkGpuOverlay.Enabled = true;
+
+                    chkGpuMesh3D.Checked = _gpuMeshSavedState;
+                    chkGpuComputeShaders.Checked = _gpuComputeSavedState;
+                    chkGpuOverlay.Checked = _gpuOverlaySavedState;
+                }
             }
-            else
+            finally
             {
-                chkGpuMesh3D.Enabled = true;
-                chkGpuComputeShaders.Enabled = true;
-                chkGpuOverlay.Enabled = true;
-
-                chkGpuMesh3D.Checked = _gpuMeshSavedState;
-                chkGpuComputeShaders.Checked = _gpuComputeSavedState;
-                chkGpuOverlay.Checked = _gpuOverlaySavedState;
+                _suppressDisplayDriverPersistence = false;
             }
 
             console.RestartDisplayDX();
@@ -20131,18 +20182,21 @@ namespace Thetis
         {
             if (initializing) return;
             Display.GpuMeshEnabled = chkGpuMesh3D.Checked;
+            PersistDisplayDriverOption(chkGpuMesh3D);
         }
 
         private void chkGpuComputeShaders_CheckedChanged(object sender, EventArgs e)
         {
             if (initializing) return;
             Display.GpuComputeEnabled = chkGpuComputeShaders.Checked;
+            PersistDisplayDriverOption(chkGpuComputeShaders);
         }
 
         private void chkGpuOverlay_CheckedChanged(object sender, EventArgs e)
         {
             if (initializing) return;
             Display.GpuOverlayEnabled = chkGpuOverlay.Checked;
+            PersistDisplayDriverOption(chkGpuOverlay);
         }
 
         private void chkMeshDiagLog_CheckedChanged(object sender, EventArgs e)
