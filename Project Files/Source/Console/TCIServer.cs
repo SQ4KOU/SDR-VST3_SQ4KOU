@@ -2339,6 +2339,10 @@ namespace Thetis
         private int m_sq4kouCmd07HeartbeatSeq = 0;
         private long m_sq4kouCmd07LastSendTicks = 0;
         private int m_sq4kouLastHwSeq = -1;
+        private Band m_sq4kouLastRxBand = (Band)(-1);
+        private Band m_sq4kouLastTxBand = (Band)(-1);
+        private int m_sq4kouLastRxAnt = -1;
+        private int m_sq4kouLastTxAnt = -1;
 
         private void sendSQ4KOUCmd07(bool force)
         {
@@ -2448,8 +2452,35 @@ namespace Thetis
         private void SQ4KOUHardwareTimer(object state)
         {
             if (m_disconnected || m_stopClient || !m_bWebSocket) return;
+
             sendSQ4KOUHardwareState(false);
             sendSQ4KOUCmd07(false);
+
+            // SQ4KOU antenna telemetry is deliberately published from this
+            // socket worker timer, never synchronously from the UI/band-change path.
+            try
+            {
+                Band rxBand = consoleThreadSafe.RX1Band;
+                Band txBand = consoleThreadSafe.TXBand;
+                int rxAnt = Alex.getAlex().getRxAnt(rxBand);
+                int txAnt = Alex.getAlex().getTxAnt(txBand);
+
+                if (rxBand != m_sq4kouLastRxBand || rxAnt != m_sq4kouLastRxAnt)
+                {
+                    m_sq4kouLastRxBand = rxBand;
+                    m_sq4kouLastRxAnt = rxAnt;
+                    sendRXAntennaSelected(rxAnt, rxBand);
+                }
+
+                if (txBand != m_sq4kouLastTxBand || txAnt != m_sq4kouLastTxAnt)
+                {
+                    m_sq4kouLastTxBand = txBand;
+                    m_sq4kouLastTxAnt = txAnt;
+                    sendTXAntennaSelected(txAnt, txBand);
+                }
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         }
 
         private void sendTXAntennaSelected(int antenna, Band band)
@@ -6909,8 +6940,6 @@ namespace Thetis
                     console.XITChangedHandlers += OnXITChanged;
                     console.RITValueChangedHandlers += OnRITValueChanged;
                     console.XITValueChangedHandlers += OnXITValueChanged;
-                    console.AntennaTXChangedHandlers += OnAntennaTXChanged;
-                    console.AntennaRXChangedHandlers += OnAntennaRXChanged;
 					console.TXFrequncyChangedHandlers += OnTXFrequencyChanged;
                     console.MeterReadingsChangedHandlers += OnMeterReadingsChanged;
                     console.NRChangedHandlers += OnNrChanged;
@@ -7026,8 +7055,6 @@ namespace Thetis
                     console.XITChangedHandlers -= OnXITChanged;
                     console.RITValueChangedHandlers -= OnRITValueChanged;
                     console.XITValueChangedHandlers -= OnXITValueChanged;
-                    console.AntennaTXChangedHandlers -= OnAntennaTXChanged;
-                    console.AntennaRXChangedHandlers -= OnAntennaRXChanged;
                     console.TXFrequncyChangedHandlers -= OnTXFrequencyChanged;
                     console.MeterReadingsChangedHandlers -= OnMeterReadingsChanged;
                     console.NRChangedHandlers -= OnNrChanged;
@@ -8094,37 +8121,6 @@ namespace Thetis
                 }
             }
         }
-        private void OnAntennaRXChanged(Band band, int antenna, bool old_state, bool new_state)
-        {
-            // Publish the actual Alex selection for the currently active RX1 band.
-            if (!new_state) return;
-            Band activeBand = console.ThreadSafeTCIAccessor.RX1Band;
-            if (band != activeBand) return;
-            int selected = Alex.getAlex().getRxAnt(activeBand);
-
-            lock (m_objLocker)
-            {
-                if (m_server == null || m_socketListenersList == null) return;
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                    socketListener.RXAntennaSelectedChanged(selected, activeBand);
-            }
-        }
-
-        private void OnAntennaTXChanged(Band band, int antenna, bool old_state, bool new_state)
-        {
-            // Setup uses a button index; publish the actual Alex TxAnt selection.
-            if (!new_state) return;
-            Band activeBand = console.ThreadSafeTCIAccessor.TXBand;
-            if (band != activeBand) return;
-            int selected = Alex.getAlex().getTxAnt(activeBand);
-
-            lock (m_objLocker)
-            {
-                if (m_server == null || m_socketListenersList == null) return;
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                    socketListener.TXAntennaSelectedChanged(selected, activeBand);
-            }
-        }
 
 		private void OnTXFrequencyChanged(double old_frequency, double new_frequency, Band old_band, Band new_band, bool rx2_enabled, bool tx_vfob, double centre_freq)
 		{
@@ -8154,8 +8150,6 @@ namespace Thetis
                 foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
                 {
                     socketListener.TXFrequencyChange(vfod);
-                    // TX band/VFO/SPLIT changes can select another preconfigured antenna.
-                    socketListener.TXAntennaSelectedChanged(Alex.getAlex().getTxAnt(new_band), new_band);
                 }
             }
         }
