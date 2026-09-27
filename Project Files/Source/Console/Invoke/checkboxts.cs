@@ -43,6 +43,7 @@ namespace System.Windows.Forms
         {
             switch (base.Name)
             {
+                case "chkDisplay3DPanadapter":
                 case "chkGpuMesh3D":
                 case "chkGpuComputeShaders":
                 case "chkGpuOverlay":
