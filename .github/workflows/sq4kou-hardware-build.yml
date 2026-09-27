@@ -1,0 +1,53 @@
+name: SQ4KOU Hardware Test MSI
+
+on:
+  push:
+    branches:
+      - feature/sq4kou-hardware
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: msbuild "Project Files/Source/Thetis_VS2026.sln" -t:Restore -p:Configuration=Release -p:Platform=x64 -m -nologo
+
+      - name: Build
+        run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $wixTargets = "C:/Program Files (x86)/MSBuild/Microsoft/WiX/v3.x/Wix.targets"
+          msbuild "Project Files/Source/Thetis-Installer/Thetis-Installer.wixproj" -p:Configuration=Release -p:Platform=x64 "-p:WixTargetsPath=$wixTargets" -m -nologo
+
+      - name: Locate MSI
+        id: msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem "Project Files/bin/Installers/SDR-VST3-v*.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msi) { throw "MSI not found" }
+          "path=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDR-VST3-SQ4KOU-Hardware
+          path: ${{ steps.msi.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
