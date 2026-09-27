@@ -564,6 +564,40 @@ namespace Thetis
 
         #region properties
 
+        // SQ4KOU: Protocol-1 Diversity runtime gate.
+        // Preserve the user's Diversity state, stop EXTDIV while transmitting,
+        // and restore the exact pre-TX state after return to RX.
+        // Protocol 2 is deliberately excluded.
+        private static bool diversity_tx_gate_active = false;
+        private static bool diversity_tx_saved_run = false;
+
+        private static void ApplyDiversityP1TxGate(bool tx)
+        {
+            if (NetworkIO.CurrentRadioProtocol != RadioProtocol.USB)
+                return;
+
+            if (tx)
+            {
+                if (!diversity_tx_gate_active)
+                {
+                    diversity_tx_saved_run = (Audio.console != null && Audio.console.Diversity2);
+                    diversity_tx_gate_active = true;
+                }
+
+                WDSP.SetEXTDIVRun(0, 0);
+                LoadRouterControlBit((void*)0, 0, 1, 0);
+            }
+            else
+            {
+                int run = diversity_tx_gate_active
+                    ? (diversity_tx_saved_run ? 1 : 0)
+                    : ((Audio.console != null && Audio.console.Diversity2) ? 1 : 0);
+
+                WDSP.SetEXTDIVRun(0, run);
+                LoadRouterControlBit((void*)0, 0, 1, run);
+                diversity_tx_gate_active = false;
+            }
+        }
         // set in audio.cs
         private static bool mox = false;
         public static bool Mox
@@ -575,6 +609,9 @@ namespace Thetis
                 m_cachedTxInputRate = 0;
                 if (mox)
                 {
+                    // Disable Diversity before Protocol-1 TX routing.
+                    ApplyDiversityP1TxGate(true);
+
                     LoadRouterControlBit((void *)0, 0, 2, 1);
                     WaveThing.wplayer[0].Condx = 1;
                     WaveThing.wplayer[1].Condx = 1;
@@ -590,6 +627,9 @@ namespace Thetis
                     WaveThing.wrecorder[0].Condx = 0;
                     WaveThing.wrecorder[1].Condx = 0;
                     Scope.dscope[0].Condx = 0;
+
+                    // Restore the Diversity state saved at RX->TX.
+                    ApplyDiversityP1TxGate(false);
                 }
                 cmaster.CMSetEERRun(0);
             }
