@@ -75,6 +75,14 @@ namespace Thetis
 			LimitTXRXAntenna = IsSetTo1;
 
 		}
+        // SQ4KOU TCI Stage 1: read the already-selected RX1 antenna without
+        // changing Alex routing. 0 means the requested band is outside RxAnt[].
+        public byte getRxAnt(Band band)
+        {
+            int idx = (int)band - (int)Band.B160M;
+            if (idx < 0 || idx >= RxAnt.Length) return 0;
+            return RxAnt[idx];
+        }
 		public void setRxAnt(Band band, byte ant) 
 		{ 
 			if ( ant > 3 ) 
@@ -95,6 +103,14 @@ namespace Thetis
 			RxOnlyAnt[idx] = ant; 
 		} 
 
+        // SQ4KOU TCI Stage 1: read the already-selected TX antenna without
+        // changing Alex routing. 0 means the requested band is outside TxAnt[].
+        public byte getTxAnt(Band band)
+        {
+            int idx = (int)band - (int)Band.B160M;
+            if (idx < 0 || idx >= TxAnt.Length) return 0;
+            return TxAnt[idx];
+        }
 		public void setTxAnt(Band band, byte ant) 
 		{ 
 			if ( ant > 3 ) 
