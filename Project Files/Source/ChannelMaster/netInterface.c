@@ -395,9 +395,58 @@ void EnableEClassModulation(int bit)
 	}
 }
 
+/* SQ4KOU_HW_TELEMETRY_V1
+ * Read-only shadow of values already crossing the final managed/native HPSDR
+ * hardware boundary. No hardware decision is made here and no command path is
+ * changed. seq increments only when a value really changes (or first becomes valid).
+ */
+static volatile int sq4kou_hw_seq = 0;
+static volatile int sq4kou_hw_valid = 0;
+static volatile int sq4kou_hw_rx_only_ant = 0;
+static volatile int sq4kou_hw_trx_ant = 0;
+static volatile int sq4kou_hw_tx_ant = 0;
+static volatile int sq4kou_hw_rx_out = 0;
+static volatile int sq4kou_hw_tx = 0;
+static volatile int sq4kou_hw_oc = 0;
+static volatile int sq4kou_hw_tx_step_att = 0;
+static volatile int sq4kou_hw_adc1_step_att = 0;
+static volatile int sq4kou_hw_drive = 0;
+static volatile int sq4kou_hw_pa_disable = 0;
+static volatile int sq4kou_hw_alex_hpf = 0;
+
+PORT int GetSQ4KOUHardwareState(
+    int* seq, int* valid,
+    int* rx_only_ant, int* trx_ant, int* tx_ant, int* rx_out, int* tx,
+    int* oc_bits, int* tx_step_att, int* adc1_step_att,
+    int* drive, int* pa_disable, int* alex_hpf_bits)
+{
+    if (seq) *seq = sq4kou_hw_seq;
+    if (valid) *valid = sq4kou_hw_valid;
+    if (rx_only_ant) *rx_only_ant = sq4kou_hw_rx_only_ant;
+    if (trx_ant) *trx_ant = sq4kou_hw_trx_ant;
+    if (tx_ant) *tx_ant = sq4kou_hw_tx_ant;
+    if (rx_out) *rx_out = sq4kou_hw_rx_out;
+    if (tx) *tx = sq4kou_hw_tx;
+    if (oc_bits) *oc_bits = sq4kou_hw_oc;
+    if (tx_step_att) *tx_step_att = sq4kou_hw_tx_step_att;
+    if (adc1_step_att) *adc1_step_att = sq4kou_hw_adc1_step_att;
+    if (drive) *drive = sq4kou_hw_drive;
+    if (pa_disable) *pa_disable = sq4kou_hw_pa_disable;
+    if (alex_hpf_bits) *alex_hpf_bits = sq4kou_hw_alex_hpf;
+    return 1;
+}
+
+
 PORT
 void SetOCBits(int b) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1: active/effective OC mask. */
+    if (((sq4kou_hw_valid & 0x02) == 0) || sq4kou_hw_oc != (int)b) {
+        sq4kou_hw_oc = (int)b;
+        sq4kou_hw_valid |= 0x02;
+        sq4kou_hw_seq++;
+    }
+
 	if (prn->oc_output != b)
 	{
 		prn->oc_output = b;
@@ -457,6 +506,22 @@ void SetADCRandom(int bits)
 
 PORT
 void SetAntBits(int rx_only_ant, int trx_ant, int tx_ant, int rx_out, char tx) {
+    /* SQ4KOU_HW_TELEMETRY_V1: exact effective antenna arguments sent to hardware. */
+    if (((sq4kou_hw_valid & 0x01) == 0) ||
+        sq4kou_hw_rx_only_ant != (int)rx_only_ant ||
+        sq4kou_hw_trx_ant != (int)trx_ant ||
+        sq4kou_hw_tx_ant != (int)tx_ant ||
+        sq4kou_hw_rx_out != (int)rx_out ||
+        sq4kou_hw_tx != (int)tx) {
+        sq4kou_hw_rx_only_ant = (int)rx_only_ant;
+        sq4kou_hw_trx_ant = (int)trx_ant;
+        sq4kou_hw_tx_ant = (int)tx_ant;
+        sq4kou_hw_rx_out = (int)rx_out;
+        sq4kou_hw_tx = (int)tx;
+        sq4kou_hw_valid |= 0x01;
+        sq4kou_hw_seq++;
+    }
+
 
 	if (mkiibpf)
 	{
@@ -524,6 +589,13 @@ void SetVFOfreq(int id, int freq, int tx)
 PORT
 void SetOutputPowerFactor(int u) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1 drive: exact 0..255 factor sent to ChannelMaster. */
+    if (((sq4kou_hw_valid & 0x20) == 0) || sq4kou_hw_drive != (int)u) {
+        sq4kou_hw_drive = (int)u;
+        sq4kou_hw_valid |= 0x20;
+        sq4kou_hw_seq++;
+    }
+
 	if (prn->tx[0].drive_level != u)
 	{
 		prn->tx[0].drive_level = u;
@@ -604,6 +676,13 @@ void SelectApolloFilter(int bits)
 PORT
 void SetAlexHPFBits(int bits) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1 Alex HPF: bit 0x40 is the 6 m preamp/LNA. */
+    if (((sq4kou_hw_valid & 0x10) == 0) || sq4kou_hw_alex_hpf != (int)bits) {
+        sq4kou_hw_alex_hpf = (int)bits;
+        sq4kou_hw_valid |= 0x10;
+        sq4kou_hw_seq++;
+    }
+
 	if (AlexHPFMask != bits) 
 	{
 		prbpfilter->_13MHz_HPF = (bits & 0x01) != 0;
@@ -623,6 +702,13 @@ void SetAlexHPFBits(int bits)
 PORT
 void DisablePA(int bit) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1 PA: native semantic is disable flag. */
+    if (((sq4kou_hw_valid & 0x08) == 0) || sq4kou_hw_pa_disable != (int)bit) {
+        sq4kou_hw_pa_disable = (int)bit;
+        sq4kou_hw_valid |= 0x08;
+        sq4kou_hw_seq++;
+    }
+
 	if (prn->tx[0].pa != bit) 
 	{
 		prn->tx[0].pa = bit;		
@@ -848,6 +934,13 @@ void SetUserOut3(int out)
 PORT
 void SetADC1StepAttenData(int data) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1: physical ADC1 step ATT; during TX this is PS S-ATT. */
+    if (((sq4kou_hw_valid & 0x40) == 0) || sq4kou_hw_adc1_step_att != (int)data) {
+        sq4kou_hw_adc1_step_att = (int)data;
+        sq4kou_hw_valid |= 0x40;
+        sq4kou_hw_seq++;
+    }
+
 	if (prn->adc[0].rx_step_attn != data)
 	{
 		prn->adc[0].rx_step_attn = data;
@@ -1005,6 +1098,13 @@ int GetADC_cntrl_P1()
 PORT
 void SetTxAttenData(int bits) 
 {
+    /* SQ4KOU_HW_TELEMETRY_V1: Thetis dedicated TX step attenuator. */
+    if (((sq4kou_hw_valid & 0x04) == 0) || sq4kou_hw_tx_step_att != (int)bits) {
+        sq4kou_hw_tx_step_att = (int)bits;
+        sq4kou_hw_valid |= 0x04;
+        sq4kou_hw_seq++;
+    }
+
 	int i;
 
 	if (prn->adc[0].tx_step_attn != bits) 
