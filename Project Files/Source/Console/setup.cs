@@ -663,6 +663,15 @@ namespace Thetis
             //-----------------------------
             initializing = false;
 
+            // getOptions() has now restored the native Options values into the
+            // controls. Seed the Force-CPU preference cache from those restored
+            // values BEFORE ForceAllEvents() invokes chkForceCPURendering_CheckedChanged().
+            // Without this, the cache is still false/false/false and startup itself
+            // overwrites correctly restored GPU checkbox states back to false.
+            _gpuMeshSavedState = chkGpuMesh3D.Checked;
+            _gpuComputeSavedState = chkGpuComputeShaders.Checked;
+            _gpuOverlaySavedState = chkGpuOverlay.Checked;
+
             // push 3D panadapter enable state to Display (skipped during init due to 'initializing' guard)
             // remaining 3D settings are pushed by the 3D Panadapter Settings window
             Display.Pan3DEnabled = chkDisplay3DPanadapter.Checked;
