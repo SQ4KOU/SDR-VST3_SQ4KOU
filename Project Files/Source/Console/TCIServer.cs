@@ -1509,8 +1509,21 @@ namespace Thetis
         }
 		public void PowerChange(bool oldPower, bool newPower)
         {
-			if (m_disconnected) return;
-			sendStartStop(newPower);
+            if (m_disconnected) return;
+
+            // TCI clients stay connected while the radio POWER button is cycled.
+            // A plain "start;" is not enough after POWER ON because the client may
+            // have discarded its radio-control state while the hardware was down.
+            // Queue START first, then republish the complete current radio state.
+            if (!oldPower && newPower)
+            {
+                sendStartStop(true);
+                sendInitialRadioState(false);
+            }
+            else
+            {
+                sendStartStop(newPower);
+            }
         }
 		//
 
@@ -2639,7 +2652,7 @@ namespace Thetis
             }
         }
 
-        private void sendInitialRadioState()
+        private void sendInitialRadioState(bool includePowerState = true)
         {
 			bool bSend = m_server != null ? m_server.SendInitialFrequencyStateOnConnect : true;
 			bool bRX2Enabled = consoleThreadSafe.RX2Enabled;
@@ -2833,9 +2846,10 @@ namespace Thetis
 			sendMONEnable(consoleThreadSafe.MON);
             sendMONVolume(linearToDbVolume(consoleThreadSafe.TXAF));
 
-            sendStartStop(consoleThreadSafe.PowerOn);// MW0LGE_22b moved here to replicate sun
+            if (includePowerState)
+                sendStartStop(consoleThreadSafe.PowerOn);// MW0LGE_22b moved here to replicate sun
 
-			Debug.Print("SENT INITIAL STATE");
+			Debug.Print("SENT INITIAL STATE" + (includePowerState ? "" : " (POWER resync)"));
 		}
 
 		private void sendInitialisationData()
