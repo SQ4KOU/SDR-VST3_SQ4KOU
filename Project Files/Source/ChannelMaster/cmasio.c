@@ -124,13 +124,21 @@ void asioIN(double* in_tx)
 	{
 		if (WaitForSingleObject(pcma->bufferFull, 2) == WAIT_TIMEOUT) { ++pcma->underFlowsIn; return; }
 		memcpy(in_tx, pcma->input, pcma->blocksize * sizeof(complex));
-		combinebuff(pcma->blocksize, in_tx, in_tx);
+		if (pcma->input_mode == IM_BOTH)
+		{
+			combinebuff(pcma->blocksize, in_tx, in_tx);
+			scalebuff(pcma->blocksize, in_tx, 0.5, in_tx);
+		}
 		ReleaseSemaphore(pcma->bufferEmpty, 1, NULL);
 	}
 	else
 	{
 		xrmatchOUT(pcma->rmatchIN, in_tx);
-		combinebuff(pcma->blocksize, in_tx, in_tx);
+		if (pcma->input_mode == IM_BOTH)
+		{
+			combinebuff(pcma->blocksize, in_tx, in_tx);
+			scalebuff(pcma->blocksize, in_tx, 0.5, in_tx);
+		}
 	}
 }
 
