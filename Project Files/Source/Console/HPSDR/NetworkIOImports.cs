@@ -221,6 +221,15 @@ namespace Thetis
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetTxAttenData(int bits);
 
+        // SQ4KOU TCI Stage 2: read-only snapshot captured at the native
+        // ChannelMaster hardware boundary. Does not alter radio control.
+        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int GetSQ4KOUHardwareState(
+            out int seq, out int valid,
+            out int rx_only_ant, out int trx_ant, out int tx_ant, out int rx_out, out int tx,
+            out int oc_bits, out int tx_step_att, out int adc1_step_att,
+            out int drive, out int pa_disable, out int alex_hpf_bits);
+
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetRX1Preamp(int bits);
 
