@@ -2449,6 +2449,18 @@ namespace Thetis
             sendTextFrame(s.ToLowerInvariant());
         }
 
+        // Updated only from existing radio callbacks. The worker never calls
+        // Console.Invoke/consoleThreadSafe during normal operation.
+        public void SQ4KOUCacheRXBand(Band band)
+        {
+            m_sq4kouLastRxBand = band;
+        }
+
+        public void SQ4KOUCacheTXBand(Band band)
+        {
+            m_sq4kouLastTxBand = band;
+        }
+
         private void SQ4KOUHardwareTimer(object state)
         {
             if (m_disconnected || m_stopClient || !m_bWebSocket) return;
@@ -2456,27 +2468,32 @@ namespace Thetis
             sendSQ4KOUHardwareState(false);
             sendSQ4KOUCmd07(false);
 
-            // SQ4KOU antenna telemetry is deliberately published from this
-            // socket worker timer, never synchronously from the UI/band-change path.
+            // IMPORTANT: no synchronous UI-thread round-trip here.
+            // Band values are cached by the normal TCI callbacks and Alex is
+            // read directly on this worker thread.
             try
             {
-                Band rxBand = consoleThreadSafe.RX1Band;
-                Band txBand = consoleThreadSafe.TXBand;
-                int rxAnt = Alex.getAlex().getRxAnt(rxBand);
-                int txAnt = Alex.getAlex().getTxAnt(txBand);
+                Band rxBand = m_sq4kouLastRxBand;
+                Band txBand = m_sq4kouLastTxBand;
 
-                if (rxBand != m_sq4kouLastRxBand || rxAnt != m_sq4kouLastRxAnt)
+                if ((int)rxBand >= 0)
                 {
-                    m_sq4kouLastRxBand = rxBand;
-                    m_sq4kouLastRxAnt = rxAnt;
-                    sendRXAntennaSelected(rxAnt, rxBand);
+                    int rxAnt = Alex.getAlex().getRxAnt(rxBand);
+                    if (rxAnt != m_sq4kouLastRxAnt)
+                    {
+                        m_sq4kouLastRxAnt = rxAnt;
+                        sendRXAntennaSelected(rxAnt, rxBand);
+                    }
                 }
 
-                if (txBand != m_sq4kouLastTxBand || txAnt != m_sq4kouLastTxAnt)
+                if ((int)txBand >= 0)
                 {
-                    m_sq4kouLastTxBand = txBand;
-                    m_sq4kouLastTxAnt = txAnt;
-                    sendTXAntennaSelected(txAnt, txBand);
+                    int txAnt = Alex.getAlex().getTxAnt(txBand);
+                    if (txAnt != m_sq4kouLastTxAnt)
+                    {
+                        m_sq4kouLastTxAnt = txAnt;
+                        sendTXAntennaSelected(txAnt, txBand);
+                    }
                 }
             }
             catch (ObjectDisposedException) { }
@@ -2688,8 +2705,12 @@ namespace Thetis
             // SQ4KOU Stage 1: publish current selected antennas at TCI connect.
             Band selectedRxBand = consoleThreadSafe.RX1Band;
             Band selectedTxBand = consoleThreadSafe.TXBand;
-            sendRXAntennaSelected(Alex.getAlex().getRxAnt(selectedRxBand), selectedRxBand);
-            sendTXAntennaSelected(Alex.getAlex().getTxAnt(selectedTxBand), selectedTxBand);
+            m_sq4kouLastRxBand = selectedRxBand;
+            m_sq4kouLastTxBand = selectedTxBand;
+            m_sq4kouLastRxAnt = Alex.getAlex().getRxAnt(selectedRxBand);
+            m_sq4kouLastTxAnt = Alex.getAlex().getTxAnt(selectedTxBand);
+            sendRXAntennaSelected(m_sq4kouLastRxAnt, selectedRxBand);
+            sendTXAntennaSelected(m_sq4kouLastTxAnt, selectedTxBand);
 
             // SQ4KOU Stage 2: initial effective hardware snapshot.
             sendSQ4KOUHardwareState(true);
@@ -7542,8 +7563,10 @@ namespace Thetis
                 foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
 				{
 					socketListener.BandChange(rx, oldBand, newBand);
+                    // Cache only. Do not read Alex and do not send socket data
+                    // synchronously from the UI/band-change path.
                     if (rx == 1)
-                        socketListener.RXAntennaSelectedChanged(Alex.getAlex().getRxAnt(newBand), newBand);
+                        socketListener.SQ4KOUCacheRXBand(newBand);
 				}
 			}
 		}
@@ -8150,6 +8173,8 @@ namespace Thetis
                 foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
                 {
                     socketListener.TXFrequencyChange(vfod);
+                    // Cache TX band only; publication is deferred to the worker.
+                    socketListener.SQ4KOUCacheTXBand(new_band);
                 }
             }
         }
