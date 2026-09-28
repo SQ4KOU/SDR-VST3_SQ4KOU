@@ -16,10 +16,16 @@ namespace Thetis
             if (!_gpuWaterfallUiBuilt)
             {
                 _gpuWaterfallUiBuilt = true;
+                Display.EnsureNativeGPUWaterfallSettingsLoaded();
                 InitGPUWaterfallSetupUI();
                 LoadGPUWaterfallUIState();
                 ApplyLoadedGPUWaterfallSettings();
+                RestoreGPUWaterfallPaletteSelections();
                 WireGPUWaterfallPersistence(_tpWaterfall);
+
+                if (comboColorPalette != null) comboColorPalette.SelectedIndexChanged += GPUWaterfallControlChanged;
+                if (comboRX2ColorPalette != null) comboRX2ColorPalette.SelectedIndexChanged += GPUWaterfallControlChanged;
+                if (comboColorPalette_tx != null) comboColorPalette_tx.SelectedIndexChanged += GPUWaterfallControlChanged;
             }
         }
 
@@ -59,7 +65,7 @@ namespace Thetis
             if (_gpuWaterfallUiLoading || _tpWaterfall == null) return;
             try
             {
-                Dictionary<string,string> d = DB.GetVarsDictionary("GPUWaterfallUI");
+                Dictionary<string,string> d = DB.GetVarsDictionary("GPUWaterfallUI") ?? new Dictionary<string,string>();
                 foreach (Control c in EnumerateGPUWaterfallControls(_tpWaterfall))
                 {
                     if (string.IsNullOrEmpty(c.Name)) continue;
@@ -68,10 +74,42 @@ namespace Thetis
                     else if (c is NumericUpDown nu) d[c.Name] = nu.Value.ToString(CultureInfo.InvariantCulture);
                     else if (c is TrackBar tb) d[c.Name] = tb.Value.ToString(CultureInfo.InvariantCulture);
                 }
+                if (comboColorPalette != null) d["__RX1PaletteText"] = comboColorPalette.Text;
+                if (comboRX2ColorPalette != null) d["__RX2PaletteText"] = comboRX2ColorPalette.Text;
+                if (comboColorPalette_tx != null) d["__TXPaletteText"] = comboColorPalette_tx.Text;
+
                 DB.SaveVarsDictionary("GPUWaterfallUI", ref d, true);
                 DB.WriteDB();
+                Display.PersistNativeGPUWaterfallSettings();
             }
             catch { }
+        }
+
+        private void RestoreGPUWaterfallPaletteSelections()
+        {
+            _gpuWaterfallUiLoading = true;
+            try
+            {
+                Dictionary<string,string> d = DB.GetVarsDictionary("GPUWaterfallUI") ?? new Dictionary<string,string>();
+
+                void RestoreCombo(ComboBox combo, string key)
+                {
+                    if (combo == null || !d.TryGetValue(key, out string text) || string.IsNullOrEmpty(text)) return;
+                    int index = combo.FindStringExact(text);
+                    if (index >= 0) combo.SelectedIndex = index;
+                }
+
+                RestoreCombo(comboColorPalette, "__RX1PaletteText");
+                RestoreCombo(comboRX2ColorPalette, "__RX2PaletteText");
+                RestoreCombo(comboColorPalette_tx, "__TXPaletteText");
+
+                EventArgs e = EventArgs.Empty;
+                comboColorPalette_SelectedIndexChanged(this, e);
+                comboRX2ColorPalette_SelectedIndexChanged(this, e);
+                comboColorPalette_tx_SelectedIndexChanged(this, e);
+            }
+            catch { }
+            finally { _gpuWaterfallUiLoading = false; }
         }
 
         private void LoadGPUWaterfallUIState()
