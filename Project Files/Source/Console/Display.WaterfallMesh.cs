@@ -595,7 +595,9 @@ namespace Thetis
         {
             WfPaneParams p = _wfPane[slot];
             ref WfRingState r = ref _wf[slot];
-            if (r.RowsTex == null || r.RowsSRV == null || r.AnchorSRV == null || r.ValidRows == 0) return false;
+            // SetOwns(false) is the authoritative fallback boundary. Never present a
+            // stale GPU ring after the exact source/compute path has failed.
+            if (!r.MeshOwnsPane || r.RowsTex == null || r.RowsSRV == null || r.AnchorSRV == null || r.ValidRows == 0) return false;
             if (!EnsureMeshRTV(_device)) return false;
 
             ID3D11DeviceContext dc = _device.ImmediateContext;
