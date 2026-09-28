@@ -1239,8 +1239,33 @@ namespace Thetis
                 mouseLeave();
         }
 
+        private void pnlContainer_MouseDown(object sender, MouseEventArgs e)
+        {
+            // Floating meter windows are intentionally borderless. When the top
+            // controls are hidden, keep the same 18 px top strip as an invisible
+            // drag handle so the user can still reposition the window.
+            if (!_floating || _locked || e.Button != MouseButtons.Left) return;
+
+            Rectangle dragStrip = new Rectangle(0, 0, pnlContainer.ClientSize.Width, pnlBar.Height);
+            if (!dragStrip.Contains(e.Location)) return;
+
+            pnlBar_MouseDown(pnlBar, e);
+        }
+
+        private void pnlContainer_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (_dragging && _floating && e.Button == MouseButtons.Left)
+                pnlBar_MouseUp(pnlBar, e);
+        }
+
         private void pnlContainer_MouseMove(object sender, MouseEventArgs e)
         {
+            if (_dragging && _floating)
+            {
+                pnlBar_MouseMove(pnlBar, e);
+                return;
+            }
+
             bool no_controls = _no_controls && !Common.ShiftKeyDown; //[2.10.3.6]MW0LGE no title or resize grabber, override by holding shift
 
             if (!_dragging)

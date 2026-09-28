@@ -195,8 +195,10 @@
             this.pnlContainer.Name = "pnlContainer";
             this.pnlContainer.Size = new System.Drawing.Size(200, 67);
             this.pnlContainer.TabIndex = 2;
+            this.pnlContainer.MouseDown += new System.Windows.Forms.MouseEventHandler(this.pnlContainer_MouseDown);
             this.pnlContainer.MouseLeave += new System.EventHandler(this.pnlContainer_MouseLeave);
             this.pnlContainer.MouseMove += new System.Windows.Forms.MouseEventHandler(this.pnlContainer_MouseMove);
+            this.pnlContainer.MouseUp += new System.Windows.Forms.MouseEventHandler(this.pnlContainer_MouseUp);
             // 
             // ucMeter
             // 
