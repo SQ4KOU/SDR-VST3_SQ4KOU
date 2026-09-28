@@ -1262,6 +1262,31 @@ namespace Thetis
                 mouseLeave();
         }
 
+        // DXRenderer owns the visible surface of most floating gadgets, so its mouse
+        // events do not bubble to pnlContainer. These helpers let the renderer hand
+        // Shift-drag back to the existing ucMeter window-move implementation.
+        internal bool BeginShiftFloatingWindowDrag()
+        {
+            if (!_floating || !ShiftMoveModifierDown()) return false;
+
+            pnlBar_MouseDown(pnlBar, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+            return _dragging;
+        }
+
+        internal bool ContinueShiftFloatingWindowDrag()
+        {
+            if (!_floating || !_dragging) return false;
+
+            pnlBar_MouseMove(pnlBar, new MouseEventArgs(MouseButtons.Left, 0, 0, 0, 0));
+            return _dragging;
+        }
+
+        internal void EndShiftFloatingWindowDrag()
+        {
+            if (_floating && _dragging)
+                pnlBar_MouseUp(pnlBar, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+        }
+
         private static bool ShiftMoveModifierDown()
         {
             return Common.ShiftKeyDown ||
