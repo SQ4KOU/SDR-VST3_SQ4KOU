@@ -781,6 +781,10 @@ namespace Thetis
             gmh.MouseMove += new MouseEventHandler(gmh_MouseMove); //MW0LGE_21d3
             Application.AddMessageFilter(gmh);
 
+            // SQ4KOU: native main-console blocks (BAND/MODE/FILTER/etc.)
+            // are locked by default and become movable only while Shift is held.
+            InitializeNativePanelShiftDrag();
+
             foreach (PanelTS control in this.Controls.OfType<PanelTS>())
             {
                 foreach (TextBoxTS c in control.Controls.OfType<TextBoxTS>())

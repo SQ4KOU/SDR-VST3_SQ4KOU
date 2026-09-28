@@ -284,14 +284,14 @@ namespace Thetis
         {
             if (_floating)
             {
-                if (e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
-                BeginNativeFloatingWindowDrag();
-                return;
+                _point = Parent.PointToClient(Cursor.Position);
             }
-
-            this.BringToFront();
-            _point.X = e.X;
-            _point.Y = e.Y;
+            else
+            {
+                this.BringToFront();
+                _point.X = e.X;
+                _point.Y = e.Y;
+            }
             _dragging = true;
         }
         public void Repaint()
@@ -319,16 +319,7 @@ namespace Thetis
         private void pnlBar_MouseMove(object sender, MouseEventArgs e)
         {
             if (_dragging)
-            {
-                if (_floating && !ShiftMoveModifierDown())
-                {
-                    // Releasing Shift immediately re-locks the floating window.
-                    _point = Point.Empty;
-                    _dragging = false;
-                    hideToolTip();
-                    return;
-                }
-
+            {                
                 if (_floating)
                 {
                     Point clientPos = Parent.PointToClient(Cursor.Position);
@@ -724,14 +715,14 @@ namespace Thetis
         {
             if (_floating)
             {
-                if (e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
-                BeginNativeFloatingWindowDrag();
-                return;
+                _point = Parent.PointToClient(Cursor.Position);
             }
-
-            this.BringToFront();
-            _point.X = e.X;
-            _point.Y = e.Y;
+            else
+            {
+                this.BringToFront();
+                _point.X = e.X;
+                _point.Y = e.Y;
+            }
             _dragging = true;
         }
 
@@ -747,14 +738,6 @@ namespace Thetis
         {
             if (_dragging)
             {
-                if (_floating && !ShiftMoveModifierDown())
-                {
-                    _point = Point.Empty;
-                    _dragging = false;
-                    hideToolTip();
-                    return;
-                }
-
                 Point clientPos = Parent.PointToClient(Cursor.Position);
 
                 int x = clientPos.X - _point.X;
@@ -1256,40 +1239,8 @@ namespace Thetis
                 mouseLeave();
         }
 
-        private bool BeginNativeFloatingWindowDrag()
-        {
-            if (!_floating || !ShiftMoveModifierDown()) return false;
-
-            frmMeterDisplay form = FindForm() as frmMeterDisplay;
-            return form != null && form.BeginShiftWindowDrag();
-        }
-
-        private static bool ShiftMoveModifierDown()
-        {
-            return Common.ShiftKeyDown ||
-                (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        }
-
-        private void pnlContainer_MouseDown(object sender, MouseEventArgs e)
-        {
-            if (!_floating || e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
-            BeginNativeFloatingWindowDrag();
-        }
-
-        private void pnlContainer_MouseUp(object sender, MouseEventArgs e)
-        {
-            if (_dragging && _floating && e.Button == MouseButtons.Left)
-                pnlBar_MouseUp(pnlBar, e);
-        }
-
         private void pnlContainer_MouseMove(object sender, MouseEventArgs e)
         {
-            if (_dragging && _floating)
-            {
-                pnlBar_MouseMove(pnlBar, e);
-                return;
-            }
-
             bool no_controls = _no_controls && !Common.ShiftKeyDown; //[2.10.3.6]MW0LGE no title or resize grabber, override by holding shift
 
             if (!_dragging)

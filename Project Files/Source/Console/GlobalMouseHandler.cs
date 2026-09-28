@@ -40,6 +40,7 @@ mw0lge@grange-lane.co.uk
 //============================================================================================//
 
 using System;
+using System.Drawing;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -90,4 +91,232 @@ namespace Thetis
 
         #endregion
     }
+
+
+    // SQ4KOU native Console panel move support.
+    // These are the actual built-in WinForms PanelTS blocks from console.Designer.cs
+    // (BAND, MODE, FILTER, VFO, DSP, RX2 blocks, etc.), not Meters/Gadgets.
+    public partial class Console
+    {
+        private NativePanelShiftDragFilter _nativePanelShiftDragFilter;
+        private Control _nativePanelDragPrimary;
+        private Dictionary<Control, Point> _nativePanelDragOrigins;
+        private Point _nativePanelDragMouseStart;
+
+        private static readonly HashSet<string> _nativeMovablePanelNames =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "panelBandHF",
+                "panelBandVHF",
+                "panelBandGEN",
+                "panelMode",
+                "panelFilter",
+                "panelDisplay2",
+                "panelOptions",
+                "panelSoundControls",
+                "panelVFO",
+                "panelDSP",
+                "panelMultiRX",
+                "panelPower",
+                "panelModeSpecificCW",
+                "panelModeSpecificPhone",
+                "panelModeSpecificDigital",
+                "panelModeSpecificFM",
+                "panelRX2Mixer",
+                "panelRX2DSP",
+                "panelRX2Display",
+                "panelRX2Mode",
+                "panelRX2Filter",
+                "panelRX2Power",
+                "panelRX2RF",
+                "panelButtonBar",
+                "panelAndromedaMisc"
+            };
+
+        private void InitializeNativePanelShiftDrag()
+        {
+            if (_nativePanelShiftDragFilter != null) return;
+
+            _nativePanelShiftDragFilter = new NativePanelShiftDragFilter(this);
+            Application.AddMessageFilter(_nativePanelShiftDragFilter);
+        }
+
+        private Control ResolveNativeMovablePanel(IntPtr hwnd)
+        {
+            Control c = hwnd != IntPtr.Zero ? Control.FromHandle(hwnd) : null;
+
+            while (c != null && c != this)
+            {
+                if (c.Parent == this)
+                {
+                    if (c is PanelTS && _nativeMovablePanelNames.Contains(c.Name))
+                        return c;
+
+                    break;
+                }
+
+                c = c.Parent;
+            }
+
+            // Fallback for native child HWNDs that are not represented directly
+            // by Control.FromHandle(): resolve the top-level Console child under
+            // the current pointer.
+            Point client = PointToClient(Control.MousePosition);
+            Control direct = GetChildAtPoint(client, GetChildAtPointSkip.Invisible);
+            if (direct is PanelTS && _nativeMovablePanelNames.Contains(direct.Name))
+                return direct;
+
+            return null;
+        }
+
+        private IEnumerable<Control> GetNativePanelDragGroup(Control primary)
+        {
+            string[] names;
+
+            switch (primary.Name)
+            {
+                case "panelBandHF":
+                case "panelBandVHF":
+                case "panelBandGEN":
+                    names = new[] { "panelBandHF", "panelBandVHF", "panelBandGEN" };
+                    break;
+
+                case "panelModeSpecificCW":
+                case "panelModeSpecificPhone":
+                case "panelModeSpecificDigital":
+                case "panelModeSpecificFM":
+                    names = new[]
+                    {
+                        "panelModeSpecificCW",
+                        "panelModeSpecificPhone",
+                        "panelModeSpecificDigital",
+                        "panelModeSpecificFM"
+                    };
+                    break;
+
+                default:
+                    names = new[] { primary.Name };
+                    break;
+            }
+
+            foreach (string name in names)
+            {
+                Control found = Controls.Cast<Control>().FirstOrDefault(x => x.Name == name);
+                if (found != null && found.Parent == this)
+                    yield return found;
+            }
+        }
+
+        private bool BeginNativePanelShiftDrag(IntPtr hwnd)
+        {
+            bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
+            if (!shiftDown) return false;
+
+            Control primary = ResolveNativeMovablePanel(hwnd);
+            if (primary == null) return false;
+
+            _nativePanelDragPrimary = primary;
+            _nativePanelDragMouseStart = Control.MousePosition;
+            _nativePanelDragOrigins = new Dictionary<Control, Point>();
+
+            foreach (Control c in GetNativePanelDragGroup(primary))
+                _nativePanelDragOrigins[c] = c.Location;
+
+            primary.BringToFront();
+            Cursor.Current = Cursors.SizeAll;
+            return true;
+        }
+
+        private bool ContinueNativePanelShiftDrag()
+        {
+            if (_nativePanelDragPrimary == null || _nativePanelDragOrigins == null)
+                return false;
+
+            bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
+            bool leftDown = (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left;
+
+            if (!shiftDown || !leftDown)
+            {
+                EndNativePanelShiftDrag();
+                return true;
+            }
+
+            Point mouse = Control.MousePosition;
+            int dx = mouse.X - _nativePanelDragMouseStart.X;
+            int dy = mouse.Y - _nativePanelDragMouseStart.Y;
+
+            Point primaryOrigin = _nativePanelDragOrigins[_nativePanelDragPrimary];
+            int newX = primaryOrigin.X + dx;
+            int newY = primaryOrigin.Y + dy;
+
+            int maxX = Math.Max(0, ClientSize.Width - _nativePanelDragPrimary.Width);
+            int maxY = Math.Max(0, ClientSize.Height - _nativePanelDragPrimary.Height);
+
+            newX = Math.Max(0, Math.Min(maxX, newX));
+            newY = Math.Max(0, Math.Min(maxY, newY));
+
+            int appliedDx = newX - primaryOrigin.X;
+            int appliedDy = newY - primaryOrigin.Y;
+
+            foreach (KeyValuePair<Control, Point> kvp in _nativePanelDragOrigins)
+            {
+                Point origin = kvp.Value;
+                Point next = new Point(origin.X + appliedDx, origin.Y + appliedDy);
+                if (kvp.Key.Location != next)
+                    kvp.Key.Location = next;
+            }
+
+            Cursor.Current = Cursors.SizeAll;
+            return true;
+        }
+
+        private bool EndNativePanelShiftDrag()
+        {
+            if (_nativePanelDragPrimary == null)
+                return false;
+
+            _nativePanelDragPrimary = null;
+            _nativePanelDragOrigins = null;
+            Cursor.Current = Cursors.Default;
+            return true;
+        }
+
+        private sealed class NativePanelShiftDragFilter : IMessageFilter
+        {
+            private const int WM_MOUSEMOVE = 0x0200;
+            private const int WM_LBUTTONDOWN = 0x0201;
+            private const int WM_LBUTTONUP = 0x0202;
+
+            private readonly Console _owner;
+
+            public NativePanelShiftDragFilter(Console owner)
+            {
+                _owner = owner;
+            }
+
+            public bool PreFilterMessage(ref Message m)
+            {
+                if (_owner == null || _owner.IsDisposed || _owner.Disposing)
+                    return false;
+
+                switch (m.Msg)
+                {
+                    case WM_LBUTTONDOWN:
+                        // Consume Shift+LMB only when it starts a drag on one of
+                        // the native movable Console panels. Without Shift the
+                        // original control receives the click unchanged (LOCKED).
+                        return _owner.BeginNativePanelShiftDrag(m.HWnd);
+
+                    case WM_MOUSEMOVE:
+                        return _owner.ContinueNativePanelShiftDrag();
+
+                    case WM_LBUTTONUP:
+                        return _owner.EndNativePanelShiftDrag();
+                }
+
+                return false;
+            }
+        }
+    }
+
 }

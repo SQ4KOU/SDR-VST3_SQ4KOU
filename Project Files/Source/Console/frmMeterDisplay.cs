@@ -196,31 +196,8 @@ namespace Thetis
         }
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-
-        [DllImport("user32.dll")]
-        private static extern bool ReleaseCapture();
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
         private const uint SWP_NOSIZE = 0x0001;
         private const uint SWP_NOZORDER = 0x0004;
-        private const int WM_NCLBUTTONDOWN = 0x00A1;
-        private const int HTCAPTION = 0x0002;
-
-        internal bool BeginShiftWindowDrag()
-        {
-            bool shiftDown = Common.ShiftKeyDown ||
-                (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-
-            if (!_floating || !shiftDown || !IsHandleCreated) return false;
-
-            // The floating meter/gadget form is borderless. Hand the drag to Windows
-            // as a caption drag so child controls / DXRenderer cannot swallow MouseMove.
-            ReleaseCapture();
-            SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
-            return true;
-        }
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);

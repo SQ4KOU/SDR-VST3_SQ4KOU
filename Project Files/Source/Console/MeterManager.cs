@@ -32597,7 +32597,6 @@ namespace Thetis
             private ID2D1StrokeStyle _dash_style;
 
             private Guid _touch_guid;
-            private bool _suppressNextMouseClick;
 
             private Display.AdaptorInfo _adaptor;
 
@@ -32620,7 +32619,6 @@ namespace Thetis
                 _meter = meter;
                 _highlightEdge = false;
                 _enabled = meter.Enabled;
-                _suppressNextMouseClick = false;
 
                 if (_console.TouchSupport)
                     _touch_guid = TouchHandler.EnableTouchSupport(target, HandleTouchDown, HandleTouchMove, HandleTouchUp, TouchHandler.TOUCHEVENTF_DOWN | TouchHandler.TOUCHEVENTF_MOVE | TouchHandler.TOUCHEVENTF_UP, _sId);
@@ -33891,12 +33889,6 @@ namespace Thetis
             }
             private void OnMouseClick(object sender, MouseEventArgs e)
             {
-                if (_suppressNextMouseClick)
-                {
-                    _suppressNextMouseClick = false;
-                    return;
-                }
-
                 lock (_metersLock)
                 {
                     Panel pb = sender as Panel;
@@ -33951,36 +33943,11 @@ namespace Thetis
             }
             private void OnMouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
             {
-                Panel pb = sender as Panel;
-                if (pb == null) return;
-                string sId = pb.Tag.ToString();
-
-                bool shiftDown = Common.ShiftKeyDown ||
-                    (System.Windows.Forms.Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-
-                if (shiftDown && e.Button == MouseButtons.Left)
-                {
-                    frmMeterDisplay dragForm = null;
-
-                    lock (_metersLock)
-                    {
-                        if (_lstUCMeters.ContainsKey(sId) &&
-                            _lstUCMeters[sId].Floating &&
-                            _lstMeterDisplayForms.ContainsKey(sId))
-                        {
-                            dragForm = _lstMeterDisplayForms[sId];
-                        }
-                    }
-
-                    if (dragForm != null && dragForm.BeginShiftWindowDrag())
-                    {
-                        _suppressNextMouseClick = true;
-                        return;
-                    }
-                }
-
                 lock (_metersLock)
                 {
+                    Panel pb = sender as Panel;
+                    if (pb == null) return;
+                    string sId = pb.Tag.ToString();
                     if (!_meters.ContainsKey(sId)) return;
 
                     clsMeter m = _meters[sId];
@@ -34028,7 +33995,6 @@ namespace Thetis
                     }
                 }
             }
-
             private void OnMouseUp(object sender, System.Windows.Forms.MouseEventArgs e)
             {
                 lock (_metersLock)
