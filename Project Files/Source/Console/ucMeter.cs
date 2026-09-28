@@ -1244,7 +1244,7 @@ namespace Thetis
             // Floating meter windows are intentionally borderless. When the top
             // controls are hidden, keep the same 18 px top strip as an invisible
             // drag handle so the user can still reposition the window.
-            if (!_floating || _locked || e.Button != MouseButtons.Left) return;
+            if (!_floating || e.Button != MouseButtons.Left) return;
 
             Rectangle dragStrip = new Rectangle(0, 0, pnlContainer.ClientSize.Width, pnlBar.Height);
             if (!dragStrip.Contains(e.Location)) return;
