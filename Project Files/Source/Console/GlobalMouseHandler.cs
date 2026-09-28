@@ -141,6 +141,71 @@ namespace Thetis
             Application.AddMessageFilter(_nativePanelShiftDragFilter);
         }
 
+        private const string NativePanelLocationKeyPrefix = "NativePanelLocation.";
+
+        private void AppendNativePanelLocations(List<string> state)
+        {
+            if (state == null) return;
+
+            foreach (string name in _nativeMovablePanelNames)
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+
+                if (panel == null) continue;
+
+                state.Add(NativePanelLocationKeyPrefix + name + "/" +
+                    panel.Left.ToString() + "|" + panel.Top.ToString());
+            }
+        }
+
+        private void RestoreNativePanelLocationsFromState()
+        {
+            Dictionary<string, Point> saved = new Dictionary<string, Point>(StringComparer.Ordinal);
+
+            foreach (string entry in DB.GetVars("State"))
+            {
+                int slash = entry.IndexOf('/');
+                if (slash <= 0 || slash >= entry.Length - 1) continue;
+
+                string key = entry.Substring(0, slash);
+                if (!key.StartsWith(NativePanelLocationKeyPrefix, StringComparison.Ordinal))
+                    continue;
+
+                string name = key.Substring(NativePanelLocationKeyPrefix.Length);
+                if (!_nativeMovablePanelNames.Contains(name))
+                    continue;
+
+                string[] xy = entry.Substring(slash + 1).Split('|');
+                if (xy.Length != 2) continue;
+
+                if (Int32.TryParse(xy[0], out int x) &&
+                    Int32.TryParse(xy[1], out int y))
+                {
+                    saved[name] = new Point(x, y);
+                }
+            }
+
+            foreach (KeyValuePair<string, Point> kvp in saved)
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == kvp.Key);
+
+                if (panel == null) continue;
+
+                int maxX = Math.Max(0, ClientSize.Width - panel.Width);
+                int maxY = Math.Max(0, ClientSize.Height - panel.Height);
+
+                Point restored = new Point(
+                    Math.Max(0, Math.Min(maxX, kvp.Value.X)),
+                    Math.Max(0, Math.Min(maxY, kvp.Value.Y)));
+
+                if (panel.Location != restored)
+                    panel.Location = restored;
+            }
+        }
+
+
         private Control ResolveNativeMovablePanel(IntPtr hwnd)
         {
             Control c = hwnd != IntPtr.Zero ? Control.FromHandle(hwnd) : null;
