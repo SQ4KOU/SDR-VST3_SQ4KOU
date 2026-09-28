@@ -11,7 +11,7 @@ namespace Thetis
 
         private static readonly object _exactGpuLock = new object();
         private static readonly bool[] _exactGpuInit = new bool[2];
-        private static readonly bool[] _exactGpuIqInit = new bool[2];
+        private static readonly bool[] _exactGpuIqInit = new bool[3];
         private static readonly float[][] _exactRingI = new float[2][];
         private static readonly float[][] _exactRingQ = new float[2][];
         private static readonly int[] _exactRingHead = new int[2];
@@ -28,7 +28,8 @@ namespace Thetis
         private static readonly float[][] _exactMedianScratch = new float[2][];
         private static readonly float[] _exactCalOffset = new float[2];
         private static readonly bool[] _exactCalInit = new bool[2];
-        private static bool _exactGpuUnavailable;
+        private static readonly bool[] _exactGpuUnavailable = new bool[2];
+        private static readonly int[] _exactLastIqSource = new int[2] { -1, -1 };
         private static readonly int[] _exactConfiguredWindow = new int[2] { -1, -1 };
         private static readonly float[] _exactConfiguredKaiser = new float[2] { float.NaN, float.NaN };
         private static readonly int[] _exactConfiguredMagnitude = new int[2] { -1, -1 };
@@ -44,7 +45,6 @@ namespace Thetis
             {
                 EnsureNativeGPUWaterfallSettingsLoaded();
                 return _gpuWaterfallPipelineEnabled &&
-                       _waterfallRenderQuality == WaterfallRenderQuality.High &&
                        !m_bForceCPURendering && m_eRenderPath == DXRenderPath.Hardware;
             }
         }
@@ -84,10 +84,10 @@ namespace Thetis
             {
                 // A transient init failure must not poison the whole session. A mode,
                 // FFT or overlap transition is an explicit retry boundary.
-                _exactGpuUnavailable = false;
-
                 for (int slot = 0; slot < 2; slot++)
                 {
+                    _exactGpuUnavailable[slot] = false;
+                    _exactLastIqSource[slot] = -1;
                     _exactRingHead[slot] = 0;
                     _exactRingCount[slot] = 0;
                     _exactSampleCredit[slot] = 0;
@@ -95,16 +95,17 @@ namespace Thetis
                     _exactCalInit[slot] = false;
                     _exactCalOffset[slot] = 0f;
                     _gpuLastEffectiveOverlap[slot] = -1.0;
+                }
 
-                    if (_exactGpuIqInit[slot])
+                for (int source = 0; source < _exactGpuIqInit.Length; source++)
+                {
+                    if (!_exactGpuIqInit[source]) continue;
+                    try
                     {
-                        try
-                        {
-                            ExactGpuNative.CM_WaterfallIQ_SetEnabled(slot, enableIQ ? 1 : 0);
-                        }
-                        catch
-                        {
-                        }
+                        ExactGpuNative.CM_WaterfallIQ_SetEnabled(source, enableIQ ? 1 : 0);
+                    }
+                    catch
+                    {
                     }
                 }
             }
@@ -160,12 +161,15 @@ namespace Thetis
             out float[] dataRow)
         {
             dataRow = null;
-            if (!ExactNativeGPURequested || _exactGpuUnavailable || console == null || !console.PowerOn ||
+            if (!ExactNativeGPURequested || console == null || !console.PowerOn ||
                 width <= 0 || width > 8192)
                 return -1;
 
             int slot = rx - 1;
-            if (slot < 0 || slot > 1) return -1;
+            if (slot < 0 || slot > 1 || _exactGpuUnavailable[slot]) return -1;
+
+            bool txSource = localMox(rx) && !DisplayDuplex;
+            int sourceStream = txSource ? 2 : slot;
 
             int fftSize = _gpuWaterfallFFTSize;
             if (fftSize < 1024) fftSize = ExactGpuFftSize;
@@ -175,12 +179,28 @@ namespace Thetis
             {
                 try
                 {
-                    if (!_exactGpuIqInit[slot])
+                    if (!_exactGpuIqInit[sourceStream])
                     {
-                        if (ExactGpuNative.CM_WaterfallIQ_Init(slot, ExactGpuIqCapacity) <= 0)
+                        if (ExactGpuNative.CM_WaterfallIQ_Init(sourceStream, ExactGpuIqCapacity) <= 0)
+                        {
+                            GPUWaterfallLogger.Log("WF-PATH", "RX" + rx + " IQ init failed source=" + sourceStream + "; fallback=classicD2D");
+                            _exactGpuUnavailable[slot] = true;
                             return -1;
-                        ExactGpuNative.CM_WaterfallIQ_SetEnabled(slot, 1);
-                        _exactGpuIqInit[slot] = true;
+                        }
+                        ExactGpuNative.CM_WaterfallIQ_SetEnabled(sourceStream, 1);
+                        _exactGpuIqInit[sourceStream] = true;
+                    }
+
+                    if (_exactLastIqSource[slot] != sourceStream)
+                    {
+                        _exactLastIqSource[slot] = sourceStream;
+                        _exactRingHead[slot] = 0;
+                        _exactRingCount[slot] = 0;
+                        _exactSampleCredit[slot] = 0;
+                        _exactFirstFill[slot] = false;
+                        _exactCalInit[slot] = false;
+                        _exactCalOffset[slot] = 0f;
+                        GPUWaterfallLogger.Log("WF-PATH", "RX" + rx + " IQ source=" + (txSource ? "TX-postDSP" : "RX") + " stream=" + sourceStream);
                     }
 
                     bool sizeChanged = !_exactGpuInit[slot] ||
@@ -192,7 +212,7 @@ namespace Thetis
                         if (ExactGpuNative.CM_GPUWaterfallExact_Init(slot, fftSize, width) == 0)
                         {
                             GPUWaterfallLogger.Log("WF-SOURCE", "RX" + rx + " exact init FAILED fft=" + fftSize + " width=" + width);
-                            _exactGpuUnavailable = true;
+                            _exactGpuUnavailable[slot] = true;
                             return -1;
                         }
                         GPUWaterfallLogger.Log("WF-SOURCE", "RX" + rx + " exact init fft=" + fftSize + " width=" + width);
@@ -242,11 +262,11 @@ namespace Thetis
                         _exactConfiguredResampling[slot] = resampling;
                     }
 
-                    int available = ExactGpuNative.CM_WaterfallIQ_Available(slot);
+                    int available = ExactGpuNative.CM_WaterfallIQ_Available(sourceStream);
                     if (available > 0)
                     {
                         int request = Math.Min(available, fftSize * 2);
-                        int got = ExactGpuNative.CM_WaterfallIQ_Get(slot, request, _exactReadI[slot], _exactReadQ[slot]);
+                        int got = ExactGpuNative.CM_WaterfallIQ_Get(sourceStream, request, _exactReadI[slot], _exactReadQ[slot]);
                         if (got > 0)
                         {
                             int head = _exactRingHead[slot];
@@ -273,8 +293,17 @@ namespace Thetis
                         return 0;
                     }
 
-                    int sampleRate = cmaster.GetInputRate(0, slot);
-                    if (sampleRate <= 0) sampleRate = rx == 1 ? SampleRateRX1 : SampleRateRX2;
+                    int sampleRate;
+                    if (txSource)
+                    {
+                        sampleRate = cmaster.GetChannelOutputRate(1, 0);
+                        if (sampleRate <= 0) sampleRate = cmaster.GetInputRate(1, 0);
+                    }
+                    else
+                    {
+                        sampleRate = cmaster.GetInputRate(0, slot);
+                    }
+                    if (sampleRate <= 0) sampleRate = txSource ? 192000 : (rx == 1 ? SampleRateRX1 : SampleRateRX2);
                     if (sampleRate <= 0) sampleRate = 192000;
 
                     int hop = CalculateExactGPUWaterfallHop(rx, fftSize, sampleRate, out double effectiveOverlap);
@@ -322,7 +351,8 @@ namespace Thetis
                         return -1;
                     }
                     GPUWaterfallLogger.LogRateLimited("WF-SOURCE", "ready-rx" + rx, 1000,
-                        "RX" + rx + " READY sr=" + sampleRate + " fft=" + fftSize +
+                        "RX" + rx + " READY source=" + (txSource ? "TX-postDSP" : "RX") +
+                        " sr=" + sampleRate + " fft=" + fftSize +
                         " width=" + width + " hop=" + hop + " overlap=" + effectiveOverlapPercent + "%" +
                         " auto=" + _gpuWaterfallAutoOverlap);
 
