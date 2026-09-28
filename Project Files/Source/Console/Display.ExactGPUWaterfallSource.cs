@@ -35,7 +35,6 @@ namespace Thetis
         private static readonly int[] _exactConfiguredMagnitude = new int[2] { -1, -1 };
         private static readonly int[] _exactConfiguredLanczos = new int[2] { -1, -1 };
         private static readonly int[] _exactConfiguredResampling = new int[2] { -1, -1 };
-        private static readonly int[] _exactLastIqSource = new int[2] { -1, -1 };
 
         // SDR-VST3 stability path: GPU FFT runs on the native dedicated D3D11 device,
         // while the visible waterfall history remains on the normal Vortice/D2D bitmap.
@@ -96,7 +95,6 @@ namespace Thetis
                     _exactCalInit[slot] = false;
                     _exactCalOffset[slot] = 0f;
                     _gpuLastEffectiveOverlap[slot] = -1.0;
-                    _exactLastIqSource[slot] = -1;
                 }
 
                 for (int source = 0; source < _exactGpuIqInit.Length; source++)
@@ -324,7 +322,7 @@ namespace Thetis
                                 "RX" + rx + " waiting hop credit=" + _exactSampleCredit[slot] +
                                 " hop=" + hop + " overlap=" + effectiveOverlapPercent + "%" +
                                 " auto=" + _gpuWaterfallAutoOverlap +
-                        " source=" + (gpuTxSource ? "TX" : "RX"));
+                        " source=" + (txSource ? "TX" : "RX"));
                             return 0;
                         }
                         _exactSampleCredit[slot] -= hop;
