@@ -6956,7 +6956,13 @@ namespace Thetis
             int linesToDraw = Math.Min(histCount, nLineLimit);
             if (linesToDraw < 2) return;
 
-            int grid_min = rx == 1 ? spectrum_grid_min : rx2_spectrum_grid_min;
+            // 3D history must use the same amplitude scale as the live pane.
+            // During TX the caller already passes TX grid_max, so pairing it with an
+            // RX grid_min distorts both geometry and colour-strength mapping.
+            bool local_mox = localMox(rx);
+            int grid_min = local_mox
+                ? tx_spectrum_grid_min
+                : (rx == 1 ? spectrum_grid_min : rx2_spectrum_grid_min);
             int yRange = grid_max - grid_min;
             if (yRange <= 0) return;
 
@@ -6980,8 +6986,44 @@ namespace Thetis
             // Per-rx thresholds so RX2's pane matches RX2's waterfall too.
             bool useWaterfallSync = _pan3DWaterfallSync;
             float wfLowThreshold = 0f, wfHighThreshold = 0f;
-            if (useWaterfallSync)
-                useWaterfallSync = Get3DWfSyncThresholds(rx, out wfLowThreshold, out wfHighThreshold);
+            ColorScheme wfScheme;
+            Color wfLowColor;
+            Color[] wfGradient;
+            bool wfGradientOk;
+
+            if (local_mox)
+            {
+                // TX has its own waterfall limits, scheme and custom gradient.
+                // Never colour a TX 3D surface from the RX1 palette/thresholds.
+                wfLowThreshold = TXWFAmpMin;
+                wfHighThreshold = TXWFAmpMax;
+                wfScheme = _tx_color_scheme;
+                wfLowColor = waterfall_low_color_tx;
+                wfGradient = _tx_waterfall_grad;
+                wfGradientOk = _tx_waterfall_grad_ok;
+                if (wfHighThreshold <= wfLowThreshold)
+                    useWaterfallSync = false;
+            }
+            else
+            {
+                if (useWaterfallSync)
+                    useWaterfallSync = Get3DWfSyncThresholds(rx, out wfLowThreshold, out wfHighThreshold);
+
+                if (rx == 2)
+                {
+                    wfScheme = _rx2_color_scheme;
+                    wfLowColor = rx2_waterfall_low_color;
+                    wfGradient = _rx2_waterfall_grad;
+                    wfGradientOk = _rx2_waterfall_grad_ok;
+                }
+                else
+                {
+                    wfScheme = _rx1_color_scheme;
+                    wfLowColor = waterfall_low_color;
+                    wfGradient = _rx1_waterfall_grad;
+                    wfGradientOk = _rx1_waterfall_grad_ok;
+                }
+            }
 
             // perceptual colormap — used only when waterfall sync is OFF.
             // snapshot the map index once per frame — the UI thread can change it mid-frame,
@@ -6993,7 +7035,8 @@ namespace Thetis
             // gradient support — pre-sample into a palette to avoid per-column brush creation
             const int gradPaletteSize = 64;
             System.Drawing.Color[] gradPalette = null;
-            bool useGradient = !useWaterfallSync && m_bUseLinearGradient && console.SetupForm?.RX1GradPicker != null;
+            bool useGradient = !useWaterfallSync && m_bUseLinearGradient &&
+                (local_mox ? console.SetupForm?.TXGradPicker != null : console.SetupForm?.RX1GradPicker != null);
             if (useGradient)
             {
                 try
@@ -7003,7 +7046,9 @@ namespace Thetis
                     {
                         float t = (float)i / (gradPaletteSize - 1);
                         float dBm = grid_min + t * yRange;
-                        gradPalette[i] = console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
+                        gradPalette[i] = local_mox
+                            ? console.SetupForm.TXGradPicker.GetColourForDBM(dBm)
+                            : console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
                     }
                 }
                 catch
@@ -7058,8 +7103,8 @@ namespace Thetis
                 }
                 else if (useWaterfallSync)
                 {
-                    GetWaterfallColor(dBm, wfLowThreshold, wfHighThreshold, _rx1_color_scheme,
-                        waterfall_low_color, _rx1_waterfall_grad, _rx1_waterfall_grad_ok, out R, out G, out B);
+                    GetWaterfallColor(dBm, wfLowThreshold, wfHighThreshold, wfScheme,
+                        wfLowColor, wfGradient, wfGradientOk, out R, out G, out B);
                 }
                 else if (useGradient)
                 {
