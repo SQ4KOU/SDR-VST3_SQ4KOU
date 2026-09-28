@@ -264,7 +264,7 @@ namespace Thetis
             // ud3DLineCount
             //
             this.ud3DLineCount.Location = new System.Drawing.Point(120, 147);
-            this.ud3DLineCount.Maximum = new decimal(new int[] { 60, 0, 0, 0 });
+            this.ud3DLineCount.Maximum = new decimal(new int[] { 240, 0, 0, 0 });
             this.ud3DLineCount.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
             this.ud3DLineCount.Name = "ud3DLineCount";
             this.ud3DLineCount.Size = new System.Drawing.Size(56, 20);
