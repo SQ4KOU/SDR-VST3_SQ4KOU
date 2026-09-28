@@ -189,7 +189,7 @@ namespace Thetis
                 _gpuWaterfallPipelineEnabled = value;
                 try
                 {
-                    for (int ch = 0; ch < 2; ch++)
+                    for (int ch = 0; ch < 3; ch++)
                     {
                         if (value) ExactGpuNative.CM_WaterfallIQ_Init(ch, GPU_WATERFALL_IQ_CAPACITY);
                         ExactGpuNative.CM_WaterfallIQ_SetEnabled(ch, value && !m_bForceCPURendering ? 1 : 0);
