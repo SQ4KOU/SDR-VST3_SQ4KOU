@@ -33772,11 +33772,23 @@ namespace Thetis
             }
             private void OnMouseCaptureChanged(object sender, System.EventArgs e)
             {
-                _shiftWindowDrag = false;
-
                 Panel pb = sender as Panel;
-                if (pb == null) return;
+                if (pb == null)
+                {
+                    _shiftWindowDrag = false;
+                    return;
+                }
+
                 string sId = pb.Tag.ToString();
+
+                if (_shiftWindowDrag)
+                {
+                    if (_lstUCMeters.ContainsKey(sId))
+                        _lstUCMeters[sId].EndShiftFloatingWindowDrag();
+
+                    _shiftWindowDrag = false;
+                }
+
                 if (!_meters.ContainsKey(sId)) return;
 
                 clsMeter m = _meters[sId];
@@ -33795,7 +33807,28 @@ namespace Thetis
             }
             private void OnMouseMove(object sender, System.Windows.Forms.MouseEventArgs e)
             {
-                if (_shiftWindowDrag) return;
+                if (_shiftWindowDrag)
+                {
+                    Panel dragPanel = sender as Panel;
+                    if (dragPanel != null)
+                    {
+                        string dragId = dragPanel.Tag.ToString();
+                        if (_lstUCMeters.ContainsKey(dragId))
+                        {
+                            if (!_lstUCMeters[dragId].ContinueShiftFloatingWindowDrag())
+                                _shiftWindowDrag = false;
+                        }
+                        else
+                        {
+                            _shiftWindowDrag = false;
+                        }
+                    }
+                    else
+                    {
+                        _shiftWindowDrag = false;
+                    }
+                    return;
+                }
 
                 lock (_metersLock)
                 {
@@ -33969,9 +34002,13 @@ namespace Thetis
                     if (shiftDown && e.Button == MouseButtons.Left &&
                         _lstUCMeters.ContainsKey(sId) && _lstUCMeters[sId].Floating)
                     {
-                        _shiftWindowDrag = true;
-                        _suppressNextMouseClick = true;
-                        return;
+                        ucMeter dragMeter = _lstUCMeters[sId];
+                        if (dragMeter.BeginShiftFloatingWindowDrag())
+                        {
+                            _shiftWindowDrag = true;
+                            _suppressNextMouseClick = true;
+                            return;
+                        }
                     }
 
                     clsMeter m = _meters[sId];
@@ -34023,6 +34060,14 @@ namespace Thetis
             {
                 if (_shiftWindowDrag)
                 {
+                    Panel dragPanel = sender as Panel;
+                    if (dragPanel != null)
+                    {
+                        string dragId = dragPanel.Tag.ToString();
+                        if (_lstUCMeters.ContainsKey(dragId))
+                            _lstUCMeters[dragId].EndShiftFloatingWindowDrag();
+                    }
+
                     _shiftWindowDrag = false;
                     return;
                 }
