@@ -8495,8 +8495,12 @@ namespace Thetis
                         dataCopy = current_waterfall_data_bottom_copy;
                     }
 
-                    // GPU Waterfall .NET 10: native D3D11 FFT/magnitude source.
-                    // Visible colour/history/presentation remains on Vortice.
+                    // GPU Waterfall .NET 10: when requested, the exact GPU FFT is the
+                    // authoritative row source. A healthy overlap wait HOLDS the current
+                    // GPU history; it must never inject a classic CPU-FFT row between GPU
+                    // rows. A real source failure explicitly releases GPU ownership so the
+                    // classic D2D waterfall can take over.
+                    bool exactGpuSourceFailed = false;
                     if (ExactNativeGPURequested)
                     {
                         int exactState = TryGetExactGpuWaterfallDataRow(
@@ -8506,6 +8510,21 @@ namespace Thetis
                         {
                             Array.Copy(exactRow, data, nDecimatedWidth);
                             Array.Copy(exactRow, dataCopy, nDecimatedWidth);
+                            GPUWaterfallLogger.LogRateLimited("WF-PATH", "full-rx" + rx, 1000,
+                                "RX" + rx + " FULL-GPU source=ExactFFT color=VorticeCS history=D3D11 present=D3D11");
+                        }
+                        else if (exactState == 0)
+                        {
+                            addRow = false;
+                            GPUWaterfallLogger.LogRateLimited("WF-PATH", "wait-rx" + rx, 1000,
+                                "RX" + rx + " GPU-WAIT overlap/fill; history held; no CPU row injected");
+                        }
+                        else
+                        {
+                            exactGpuSourceFailed = true;
+                            SetOwns(rx, false);
+                            GPUWaterfallLogger.LogRateLimited("WF-PATH", "fallback-rx" + rx, 1000,
+                                "RX" + rx + " FALLBACK classicD2D because ExactFFT source unavailable");
                         }
                     }
 
@@ -9568,7 +9587,7 @@ namespace Thetis
                     // Queue native Vortice colour/history work. It is executed on the
                     // next frame before Direct2D BeginDraw, so D3D11 and D2D never
                     // compete for the immediate context.
-                    if (NativeWaterfallComputeArmed && (!stopWaterfallOnTx || clearExistingBitmap))
+                    if (!exactGpuSourceFailed && NativeWaterfallComputeArmed && (!stopWaterfallOnTx || clearExistingBitmap))
                     {
                         float nativeLinCor = (cScheme == ColorScheme.LinLog) ? LinLogCor :
                                              (cScheme == ColorScheme.LinRad || cScheme == ColorScheme.LinAuto) ? LinCor : 0f;
