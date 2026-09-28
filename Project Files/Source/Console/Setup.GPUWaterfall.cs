@@ -647,7 +647,9 @@ namespace Thetis
 		wfProGroup.Controls.Add(btnTestGPU);
 		if (chkGPUWaterfallFFT != null)
 		{
-			chkGPUWaterfallFFT.Checked = Display.GPUWaterfallPipelineEnabled;
+			// Hidden legacy control: keep it logically armed. Actual enable/disable
+			// is controlled by ApplyGPUSelection/SyncGPUWaterfallPipelineEnabled.
+			chkGPUWaterfallFFT.Checked = true;
 		}
 		if (comboGPUWaterfallFFTSize != null)
 		{
@@ -914,7 +916,10 @@ namespace Thetis
 
 	private void SyncGPUWaterfallPipelineEnabled(int target)
 	{
-		bool fftRequested = chkGPUWaterfallFFT == null || chkGPUWaterfallFFT.Checked;
+		// The FFT checkbox is intentionally hidden in the native Waterfall menu.
+		// A hidden control must never become a persistent kill switch. GPU mode
+		// (Auto/Level 1/Level 2) owns the pipeline state; Level 0 owns CPU fallback.
+		bool fftRequested = chkGPUWaterfallFFT == null || !chkGPUWaterfallFFT.Visible || chkGPUWaterfallFFT.Checked;
 		bool gpuSelectionRequestsAcceleration = comboGPU == null || comboGPU.SelectedIndex != 1;
 		bool detectionPending = gpuSelectionRequestsAcceleration &&
 			(_renderFilterPending || !GPUDetector.HasDeviceContext);
@@ -925,10 +930,18 @@ namespace Thetis
 		if (detectionPending)
 		{
 			Display.GPUWaterfallPipelineEnabled = fftRequested;
+			GPUWaterfallLogger.Log("STATE",
+				"GPU pipeline sync pending target=" + target +
+				" fftRequested=" + fftRequested +
+				" result=" + Display.GPUWaterfallPipelineEnabled);
 			return;
 		}
 
 		Display.GPUWaterfallPipelineEnabled = fftRequested && target >= 1;
+		GPUWaterfallLogger.Log("STATE",
+			"GPU pipeline sync target=" + target +
+			" fftRequested=" + fftRequested +
+			" result=" + Display.GPUWaterfallPipelineEnabled);
 	}
 
 
