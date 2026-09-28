@@ -282,6 +282,10 @@ namespace Thetis
         }
         private void pnlBar_MouseDown(object sender, MouseEventArgs e)
         {
+            // Floating Windows Forms are position-locked by default.
+            // Hold Shift while pressing/dragging to unlock window movement.
+            if (_floating && !Common.ShiftKeyDown) return;
+
             if (_floating)
             {
                 _point = Parent.PointToClient(Cursor.Position);
@@ -319,7 +323,16 @@ namespace Thetis
         private void pnlBar_MouseMove(object sender, MouseEventArgs e)
         {
             if (_dragging)
-            {                
+            {
+                if (_floating && !Common.ShiftKeyDown)
+                {
+                    // Releasing Shift immediately re-locks the floating window.
+                    _point = Point.Empty;
+                    _dragging = false;
+                    hideToolTip();
+                    return;
+                }
+
                 if (_floating)
                 {
                     Point clientPos = Parent.PointToClient(Cursor.Position);
@@ -713,6 +726,8 @@ namespace Thetis
 
         private void lblRX_MouseDown(object sender, MouseEventArgs e)
         {
+            if (_floating && !Common.ShiftKeyDown) return;
+
             if (_floating)
             {
                 _point = Parent.PointToClient(Cursor.Position);
@@ -738,6 +753,14 @@ namespace Thetis
         {
             if (_dragging)
             {
+                if (_floating && !Common.ShiftKeyDown)
+                {
+                    _point = Point.Empty;
+                    _dragging = false;
+                    hideToolTip();
+                    return;
+                }
+
                 Point clientPos = Parent.PointToClient(Cursor.Position);
 
                 int x = clientPos.X - _point.X;
@@ -1244,7 +1267,7 @@ namespace Thetis
             // Floating meter windows are intentionally borderless. When the top
             // controls are hidden, keep the same 18 px top strip as an invisible
             // drag handle so the user can still reposition the window.
-            if (!_floating || e.Button != MouseButtons.Left) return;
+            if (!_floating || !Common.ShiftKeyDown || e.Button != MouseButtons.Left) return;
 
             Rectangle dragStrip = new Rectangle(0, 0, pnlContainer.ClientSize.Width, pnlBar.Height);
             if (!dragStrip.Contains(e.Location)) return;
