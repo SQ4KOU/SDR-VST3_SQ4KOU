@@ -5937,7 +5937,7 @@ namespace Thetis
             ID2D1Brush fillPeaksBrush;
             float line_width;
 
-            if (local_mox)
+            if (local_mox && !draw3DHistory)
             {
                 if (rx == 1)
                 {
@@ -6070,7 +6070,7 @@ namespace Thetis
 
                 // colouring priority for the live trace mirrors the 3D surface:
                 // waterfall sync FIRST, then perceptual colormap, then line colour
-                bool liveUseWaterfallSync = _pan3DEnabled && _pan3DWaterfallSync && rx == 1 && !local_mox;
+                bool liveUseWaterfallSync = _pan3DEnabled && _pan3DWaterfallSync && rx == 1;
                 float liveWfLow = waterfall_low_threshold;
                 float liveWfHigh = waterfall_high_threshold;
                 if (rx1_waterfall_agc && !m_bRX1_spectrum_thresholds)
@@ -6081,7 +6081,7 @@ namespace Thetis
                 float liveWfRange = liveWfHigh - liveWfLow;
                 if (liveWfRange <= 0) liveUseWaterfallSync = false;
 
-                bool liveUseColormap = _pan3DEnabled && _pan3DColorMap > 0 && rx == 1 && !local_mox && !liveUseWaterfallSync;
+                bool liveUseColormap = _pan3DEnabled && _pan3DColorMap > 0 && rx == 1 && !liveUseWaterfallSync;
                 if (liveUseColormap && _colormapLUT == null) BuildColormapLUT();
                 int liveColorMapIdx = _pan3DColorMap;
 
@@ -6111,7 +6111,7 @@ namespace Thetis
                 // vertical mapping as the front row of the stack (Aether-style) so it
                 // becomes the front crest of one continuous surface instead of a
                 // separate full-height overlay (which produced a seam/double image)
-                bool live3DMapping = draw3DHistory && !local_mox && _pan3DEnabled && _3dHistoryCount >= 2;
+                bool live3DMapping = draw3DHistory && _pan3DEnabled && _3dHistoryCount >= 2;
                 float live3DBottomY = nVerticalShift + H;
                 float live3DRidge = H * _pan3DRidgeHeight;
                 float live3DZCurve = Math.Max(0.05f, _pan3DZCurve);
@@ -6306,7 +6306,14 @@ namespace Thetis
                         }
                         else if (liveUseWaterfallSync)
                         {
-                            GetWaterfallColor(max, liveWfLow, liveWfHigh, _rx1_color_scheme,
+                            float wfSample = max;
+                            if (local_mox)
+                            {
+                                float sWf = (max - grid_min) / (float)yRange;
+                                if (sWf < 0f) sWf = 0f; else if (sWf > 1f) sWf = 1f;
+                                wfSample = liveWfLow + sWf * (liveWfHigh - liveWfLow);
+                            }
+                            GetWaterfallColor(wfSample, liveWfLow, liveWfHigh, _rx1_color_scheme,
                                 waterfall_low_color, _rx1_waterfall_grad, _rx1_waterfall_grad_ok, out int wfR, out int wfG, out int wfB);
                             int wfCacheKey = (wfR << 16) | (wfG << 8) | wfB;
                             if (!liveWfBrushCache.TryGetValue(wfCacheKey, out var wfBrush))
