@@ -949,7 +949,7 @@ namespace Thetis
                 else
                 {
                     float bright = 0.25f + 0.75f * strength;
-                    Color baseColor = local_mox ? tx_data_line_color : _pan3DLineColor;
+                    System.Drawing.Color baseColor = local_mox ? tx_data_line_color : _pan3DLineColor;
                     R = (int)(baseColor.R * bright);
                     G = (int)(baseColor.G * bright);
                     B = (int)(baseColor.B * bright);
