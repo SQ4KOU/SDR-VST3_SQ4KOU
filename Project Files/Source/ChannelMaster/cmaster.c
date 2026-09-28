@@ -27,6 +27,7 @@ warren@wpratt.com
 #include "cmcomm.h"
 #include "fldigi_mod.h"
 #include "wsjtx_mod.h"
+#include "waterfall_iq.h"
 
 cmaster cm  = {0};
 CMASTER pcm = &cm;
@@ -395,7 +396,8 @@ void xcmaster (int stream)
 		rx = rxid (stream);
 		xpipe (stream, 0, pcm->in);
 		xanb (pcm->rcvr[rx].panb);																// nb
-		xnob (pcm->rcvr[rx].pnob);																// nb2
+		xnob (pcm->rcvr[rx].pnob);
+		CM_WaterfallIQ_Push(rx, pcm->xcm_insize[stream], pcm->in[stream]);																// nb2
 		Spectrum0 (_InterlockedAnd (&pcm->rcvr[rx].run_pan, 0xffffffff), rx, 0, 0,				// panadapter 
 			pcm->in[stream]);
 
@@ -438,6 +440,7 @@ void xcmaster (int stream)
 		// WriteAudio(10.0, pcm->xmtr[tx].ch_outrate, pcm->xmtr[tx].ch_outsize, pcm->xmtr[tx].out[0], 3);
 		xsidetone(tx);
 		xpipe (stream, 1, pcm->xmtr[tx].out);
+		CM_WaterfallIQ_Push(2, pcm->xmtr[tx].ch_outsize, pcm->xmtr[tx].out[0]);
 		// Spectrum0 (1, stream, 0, 0, pcm->xmtr[tx].out[0]);									// panadapter
 		xMixAudio (0, 0, chid (stream, 0), pcm->xmtr[tx].out[2]);								// mix monitor audio
 		xtxgain (pcm->xmtr[tx].pgain);															// Gain for Penelope & amp_protect

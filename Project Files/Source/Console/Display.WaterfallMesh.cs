@@ -47,7 +47,12 @@ namespace Thetis
     {
         #region GPU waterfall mesh fields
 
-        private const int WfSlotCount = 2;   // index 0 = rx1, index 1 = rx2
+        private const int WfSlotCount = 2;
+
+        // Shared-backbuffer spectrum/waterfall/overlay meshes remain disabled.
+        // The stable SDR-VST3 bandscope and the dedicated GPU waterfall pipeline
+        // are intentionally kept independent.
+        private const bool ExperimentalSharedBackbufferMeshesEnabled = false;   // index 0 = rx1, index 1 = rx2
 
         private static bool _wfShadersBuilt;
         private static ID3D11VertexShader _wfVS;
@@ -62,9 +67,10 @@ namespace Thetis
 
         private struct WfRingState
         {
-            public ID3D11Texture2D RowsTex;         // Width x Rows, BGRA8, default usage
+            public ID3D11Texture2D RowsTex;         // Width x Rows, native waterfall history
             public ID3D11ShaderResourceView RowsSRV;
-            public ID3D11Texture2D RowStaging;      // Width x 1 staging upload
+            public ID3D11Texture2D RowStaging;      // Width x 1 staging upload (legacy CPU fallback only)
+            public Format Format;                   // BGRA8 or RGBA16F
             public ID3D11Texture2D AnchorTex;       // 1 x Rows, R32Float
             public ID3D11ShaderResourceView AnchorSRV;
             public ID3D11Texture2D AnchorStaging;   // 1 x 1 staging upload
@@ -90,12 +96,32 @@ namespace Thetis
 
         #region GPU waterfall mesh control
 
-        /// <summary>Master gate: experimental GPU mesh toggle, hardware path only.
-        /// Force-CPU / WARP sessions never arm any mesh path.</summary>
+        /// <summary>Native Vortice waterfall gate.
+        /// This path is deliberately independent of the legacy shared-backbuffer
+        /// experimental switch and of the old SharpDX WaterfallGPURenderer.
+        /// It is armed only for the stable ExactGPU source on the live Vortice D3D11
+        /// device.  Bit10 remains on the classic D2D fallback until a typed-UAV path
+        /// is validated for R10G10B10A2.</summary>
         private static bool WfMeshArmed
         {
-            get { return GpuMeshEnabled && m_eRenderPath == DXRenderPath.Hardware && _device != null && _bDX2Setup; }
+            get
+            {
+                bool supportedDepth =
+                    WaterfallEnhancer.Depth == WaterfallEnhancer.ColorDepth.Bit8 ||
+                    WaterfallEnhancer.Depth == WaterfallEnhancer.ColorDepth.Bit16;
+                // This is the new native Vortice waterfall owner.  It must not
+                // depend on GpuComputeEnabled, which belongs to the old experimental
+                // readback compute path and may legitimately be persisted OFF.
+                return supportedDepth && ExactNativeGPURequested &&
+                    !m_bForceCPURendering &&
+                    m_eRenderPath == DXRenderPath.Hardware && _device != null && _bDX2Setup;
+            }
         }
+
+        private static Format NativeWaterfallFormat =>
+            WaterfallEnhancer.Depth == WaterfallEnhancer.ColorDepth.Bit16
+                ? Format.R16G16B16A16_Float
+                : Format.B8G8R8A8_UNorm;
 
         /// <summary>True while the GPU ring owns presentation of this rx's pane (the
         /// D2D DrawBitmap present is skipped). Cleared automatically on any failure
@@ -210,7 +236,7 @@ namespace Thetis
             r.AnchorStaging?.Dispose();
             r.RowsTex = null; r.RowsSRV = null; r.RowStaging = null;
             r.AnchorTex = null; r.AnchorSRV = null; r.AnchorStaging = null;
-            r.Width = 0; r.Rows = 0;
+            r.Width = 0; r.Rows = 0; r.Format = Format.Unknown;
             r.Head = 0; r.ValidRows = 0;
             r.CumAnchor = 0;
             r.MeshOwnsPane = false;
@@ -262,8 +288,13 @@ namespace Thetis
         /// stretches stale content instead, mesh starts fresh).</summary>
         private static bool EnsureWaterfallRing(ID3D11Device device, int slot, int width, int rows)
         {
+            return EnsureWaterfallRing(device, slot, width, rows, Format.B8G8R8A8_UNorm);
+        }
+
+        private static bool EnsureWaterfallRing(ID3D11Device device, int slot, int width, int rows, Format format)
+        {
             ref WfRingState r = ref _wf[slot];
-            if (r.RowsTex != null && r.Width == width && r.Rows == rows) return true;
+            if (r.RowsTex != null && r.Width == width && r.Rows == rows && r.Format == format) return true;
 
             try
             {
@@ -275,7 +306,7 @@ namespace Thetis
                     Height = (uint)rows,
                     MipLevels = 1,
                     ArraySize = 1,
-                    Format = Format.B8G8R8A8_UNorm,
+                    Format = format,
                     SampleDescription = new SampleDescription(1, 0),
                     Usage = ResourceUsage.Default,
                     BindFlags = BindFlags.ShaderResource,
@@ -288,7 +319,7 @@ namespace Thetis
                     Height = 1,
                     MipLevels = 1,
                     ArraySize = 1,
-                    Format = Format.B8G8R8A8_UNorm,
+                    Format = format,
                     SampleDescription = new SampleDescription(1, 0),
                     Usage = ResourceUsage.Staging,
                     CPUAccessFlags = CpuAccessFlags.Write,
@@ -321,6 +352,7 @@ namespace Thetis
 
                 r.Width = width;
                 r.Rows = rows;
+                r.Format = format;
                 r.Head = 0;
                 r.ValidRows = 0;
                 r.CumAnchor = 0;
@@ -355,7 +387,14 @@ namespace Thetis
         /// <param name="clearExisting">width-change/full-clear request from same</param>
         private static bool WaterfallMeshCommitLine(int rx, byte[] row, int paneRows, bool addRow, int shiftPixels, bool clearExisting)
         {
-            if (!WfMeshArmed) { SetOwns(rx, false); return false; }
+            // Legacy CPU-coloured upload remains only as an 8-bit emergency fallback.
+            // The primary native path copies the compute-shader row texture directly,
+            // without GPU->CPU readback.
+            if (!WfMeshArmed || WaterfallEnhancer.Depth != WaterfallEnhancer.ColorDepth.Bit8)
+            {
+                SetOwns(rx, false);
+                return false;
+            }
 
             int slot = rx == 2 ? 1 : 0;
             try
@@ -399,6 +438,82 @@ namespace Thetis
             catch (Exception e)
             {
                 Common.MeshDiagLog("GPU waterfall mesh: commit failed - falling back to D2D : " + e.Message);
+                ReleaseWaterfallRing(ref _wf[slot]);
+                SetOwns(rx, false);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Commits a GPU-coloured W x 1 texture directly into the native Vortice
+        /// waterfall history ring.  No SharpDX wrapper, D2D bitmap, event-query
+        /// wait or GPU->CPU readback is involved.
+        /// </summary>
+        private static bool WaterfallMeshCommitGpuTexture(
+            int rx,
+            ID3D11Texture2D gpuRow,
+            int width,
+            int paneRows,
+            bool addRow,
+            int shiftPixels,
+            bool clearExisting,
+            Format format)
+        {
+            if (!WfMeshArmed || gpuRow == null)
+            {
+                SetOwns(rx, false);
+                return false;
+            }
+
+            int slot = rx == 2 ? 1 : 0;
+            try
+            {
+                ID3D11DeviceContext dc = _device.ImmediateContext;
+                if (!BuildWaterfallPipeline(_device))
+                {
+                    SetOwns(rx, false);
+                    return false;
+                }
+
+                ref WfRingState r = ref _wf[slot];
+
+                if (clearExisting)
+                {
+                    r.ValidRows = 0;
+                    r.CumAnchor = 0;
+                }
+                else
+                {
+                    r.CumAnchor += shiftPixels;
+                }
+
+                if (!EnsureWaterfallRing(_device, slot, width, Math.Max(2, paneRows), format))
+                {
+                    SetOwns(rx, false);
+                    return false;
+                }
+
+                if (addRow)
+                {
+                    // GPU command ordering on the immediate context guarantees that
+                    // the preceding compute dispatch completes before this copy.
+                    dc.CopySubresourceRegion(
+                        (ID3D11Resource)r.RowsTex, 0,
+                        0u, (uint)r.Head, 0u,
+                        (ID3D11Resource)gpuRow, 0, null);
+
+                    UploadAnchor(dc, ref r, (float)r.CumAnchor, r.Head);
+                    r.Head = (r.Head + 1) % r.Rows;
+                    if (r.ValidRows < r.Rows) r.ValidRows++;
+                    r.MeshOwnsPane = true;
+                }
+
+                return r.MeshOwnsPane;
+            }
+            catch (Exception e)
+            {
+                GPUWaterfallLogger.Log("WF-NATIVE-FAIL",
+                    "RX" + rx + " direct ring commit failed: " + e);
                 ReleaseWaterfallRing(ref _wf[slot]);
                 SetOwns(rx, false);
                 return false;

@@ -76,6 +76,11 @@ namespace Thetis
         LinAuto,
         off,
         Custom,
+        Console,
+        Thermal,
+        DeepBlue,
+        Enhanced256,
+        Grayscale256,
     }
 
     public enum MultiMeterDisplayMode
