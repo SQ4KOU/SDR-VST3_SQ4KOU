@@ -588,6 +588,13 @@
               />
       </Component>
 
+      <!-- Pure .NET 10 / Vortice GPU Waterfall shader payload -->
+      <Component Guid="*"><File Id="WaterfallFftBitreverseCS" Source="$(var.FilesPath)waterfall_fft_bitreverse_cs.bin" KeyPath="yes" /></Component>
+      <Component Guid="*"><File Id="WaterfallFftStageABCS" Source="$(var.FilesPath)waterfall_fft_stage_ab_cs.bin" KeyPath="yes" /></Component>
+      <Component Guid="*"><File Id="WaterfallFftStageBACS" Source="$(var.FilesPath)waterfall_fft_stage_ba_cs.bin" KeyPath="yes" /></Component>
+      <Component Guid="*"><File Id="WaterfallFftMagnitudeCS" Source="$(var.FilesPath)waterfall_fft_magnitude_cs.bin" KeyPath="yes" /></Component>
+      <Component Guid="*"><File Id="WaterfallRowCS" Source="$(var.FilesPath)waterfall_row_cs.bin" KeyPath="yes" /></Component>
+
       <Component Guid="*">
         <File Id="cmASIODLL"
               Source="$(var.FilesPath)cmASIO.dll"

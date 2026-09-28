@@ -125,6 +125,19 @@
     <Compile Include="clsLegacyItemController.cs" />
     <Compile Include="clsMeterScriptEngine.cs" />
     <Compile Include="clsSpectrumProcessor.cs" />
+    <Compile Include="GPUWaterfallWindowType.cs" />
+    <Compile Include="GPUWaterfallMagnitudeMode.cs" />
+    <Compile Include="GPUWaterfallResamplingMode.cs" />
+    <Compile Include="GPUWaterfallLogger.cs" />
+    <Compile Include="GPUDetector.cs" />
+    <Compile Include="NoiseFloorPro.cs" />
+    <Compile Include="ZoomAdaptive.cs" />
+    <Compile Include="WaterfallEnhancer.cs" />
+    <Compile Include="WaterfallPalette.cs" />
+    <Compile Include="Display.ExactGPUWaterfallSource.cs" />
+    <Compile Include="Display.NativeGPUWaterfallConfig.cs" />
+    <Compile Include="Setup.GPUWaterfall.cs" />
+    <Compile Include="Setup.GPUWaterfall.Hook.cs" />
     <Compile Include="frmCFCConfig.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -373,6 +386,11 @@
     <Compile Include="display.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Content Include="waterfall_fft_bitreverse_cs.bin"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="waterfall_fft_stage_ab_cs.bin"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="waterfall_fft_stage_ba_cs.bin"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="waterfall_fft_magnitude_cs.bin"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="waterfall_row_cs.bin"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Compile Include="DiversityForm.cs">
       <SubType>Form</SubType>
     </Compile>
