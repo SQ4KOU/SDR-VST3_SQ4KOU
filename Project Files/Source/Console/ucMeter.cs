@@ -282,20 +282,16 @@ namespace Thetis
         }
         private void pnlBar_MouseDown(object sender, MouseEventArgs e)
         {
-            // Floating Windows Forms are position-locked by default.
-            // Hold Shift while pressing/dragging to unlock window movement.
-            if (_floating && !ShiftMoveModifierDown()) return;
-
             if (_floating)
             {
-                _point = Parent.PointToClient(Cursor.Position);
+                if (e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
+                BeginNativeFloatingWindowDrag();
+                return;
             }
-            else
-            {
-                this.BringToFront();
-                _point.X = e.X;
-                _point.Y = e.Y;
-            }
+
+            this.BringToFront();
+            _point.X = e.X;
+            _point.Y = e.Y;
             _dragging = true;
         }
         public void Repaint()
@@ -726,18 +722,16 @@ namespace Thetis
 
         private void lblRX_MouseDown(object sender, MouseEventArgs e)
         {
-            if (_floating && !ShiftMoveModifierDown()) return;
-
             if (_floating)
             {
-                _point = Parent.PointToClient(Cursor.Position);
+                if (e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
+                BeginNativeFloatingWindowDrag();
+                return;
             }
-            else
-            {
-                this.BringToFront();
-                _point.X = e.X;
-                _point.Y = e.Y;
-            }
+
+            this.BringToFront();
+            _point.X = e.X;
+            _point.Y = e.Y;
             _dragging = true;
         }
 
@@ -1262,29 +1256,12 @@ namespace Thetis
                 mouseLeave();
         }
 
-        // DXRenderer owns the visible surface of most floating gadgets, so its mouse
-        // events do not bubble to pnlContainer. These helpers let the renderer hand
-        // Shift-drag back to the existing ucMeter window-move implementation.
-        internal bool BeginShiftFloatingWindowDrag()
+        private bool BeginNativeFloatingWindowDrag()
         {
             if (!_floating || !ShiftMoveModifierDown()) return false;
 
-            pnlBar_MouseDown(pnlBar, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
-            return _dragging;
-        }
-
-        internal bool ContinueShiftFloatingWindowDrag()
-        {
-            if (!_floating || !_dragging) return false;
-
-            pnlBar_MouseMove(pnlBar, new MouseEventArgs(MouseButtons.Left, 0, 0, 0, 0));
-            return _dragging;
-        }
-
-        internal void EndShiftFloatingWindowDrag()
-        {
-            if (_floating && _dragging)
-                pnlBar_MouseUp(pnlBar, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+            frmMeterDisplay form = FindForm() as frmMeterDisplay;
+            return form != null && form.BeginShiftWindowDrag();
         }
 
         private static bool ShiftMoveModifierDown()
@@ -1295,11 +1272,8 @@ namespace Thetis
 
         private void pnlContainer_MouseDown(object sender, MouseEventArgs e)
         {
-            // Floating meter windows are position-locked by default.
-            // Shift + left-drag anywhere on the meter surface moves the window.
-            if (!_floating || !ShiftMoveModifierDown() || e.Button != MouseButtons.Left) return;
-
-            pnlBar_MouseDown(pnlBar, e);
+            if (!_floating || e.Button != MouseButtons.Left || !ShiftMoveModifierDown()) return;
+            BeginNativeFloatingWindowDrag();
         }
 
         private void pnlContainer_MouseUp(object sender, MouseEventArgs e)
