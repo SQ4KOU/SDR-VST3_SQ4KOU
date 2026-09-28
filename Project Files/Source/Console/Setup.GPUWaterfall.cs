@@ -823,36 +823,18 @@ namespace Thetis
 
 	private void UpdateWaterfallRenderQualityItems(int target)
 	{
-		if (comboWaterfallRenderQuality == null)
-		{
-			return;
-		}
+		if (comboWaterfallRenderQuality == null) return;
 		_renderQualityItemsUpdating = true;
 		try
 		{
-			bool flag = target >= 1;
 			string value = comboWaterfallRenderQuality.SelectedItem as string;
-			if (string.IsNullOrEmpty(value))
-			{
-				value = (flag ? "High" : "Medium");
-			}
+			if (string.IsNullOrEmpty(value)) value = Display.WaterfallQuality.ToString();
 			comboWaterfallRenderQuality.BeginUpdate();
 			comboWaterfallRenderQuality.Items.Clear();
-			if (flag)
-			{
-				comboWaterfallRenderQuality.Items.Add("High");
-			}
-			else
-			{
-				comboWaterfallRenderQuality.Items.Add("Low");
-				comboWaterfallRenderQuality.Items.Add("Medium");
-			}
-			int num = comboWaterfallRenderQuality.Items.IndexOf(value);
-			if (num < 0)
-			{
-				num = ((!flag) ? comboWaterfallRenderQuality.Items.IndexOf("Medium") : 0);
-			}
-			comboWaterfallRenderQuality.SelectedIndex = num;
+			comboWaterfallRenderQuality.Items.AddRange(new object[] { "Low", "Medium", "High" });
+			int index = comboWaterfallRenderQuality.Items.IndexOf(value);
+			if (index < 0) index = 2;
+			comboWaterfallRenderQuality.SelectedIndex = index;
 			comboWaterfallRenderQuality.EndUpdate();
 		}
 		finally
@@ -863,7 +845,6 @@ namespace Thetis
 		SyncGPUWaterfallPipelineEnabled(target);
 		UpdateWaterfallRenderQualityHint();
 	}
-
 
 	private void UpdateOnePaletteCombo(ComboBoxTS combo, bool gpuMode)
 	{
@@ -988,13 +969,13 @@ namespace Thetis
 			switch (comboWaterfallRenderQuality.SelectedItem as string)
 			{
 			case "Low":
-				lblWaterfallRenderQualityHint.Text = (gPUEffectsEnabled ? "GPU pipeline, NN" : "CPU pipeline, 8-bit, NN");
+				lblWaterfallRenderQualityHint.Text = (gPUEffectsEnabled ? "GPU pipeline + FFT, NN" : "CPU pipeline, 8-bit, NN");
 				break;
 			case "Medium":
-				lblWaterfallRenderQualityHint.Text = (gPUEffectsEnabled ? "GPU pipeline, Linear" : "CPU pipeline, 8-bit, Linear");
+				lblWaterfallRenderQualityHint.Text = (gPUEffectsEnabled ? "GPU pipeline + FFT, Linear" : "CPU pipeline, 8-bit, Linear");
 				break;
 			case "High":
-				lblWaterfallRenderQualityHint.Text = (flag ? "GPU pipeline + FFT, 16-bit" : "GPU pipeline + FFT, 8-bit");
+				lblWaterfallRenderQualityHint.Text = (gPUEffectsEnabled ? (flag ? "GPU pipeline + FFT, 16-bit" : "GPU pipeline + FFT, 8-bit") : "CPU pipeline");
 				break;
 			default:
 				lblWaterfallRenderQualityHint.Text = "";
