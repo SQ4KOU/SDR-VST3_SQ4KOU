@@ -38,10 +38,16 @@ namespace Thetis
         // SDR-VST3 stability path: GPU FFT runs on the native dedicated D3D11 device,
         // while the visible waterfall history remains on the normal Vortice/D2D bitmap.
         // This deliberately avoids wrapping the live Vortice device/context in SharpDX.
-        private static bool ExactNativeGPURequested =>
-            _gpuWaterfallPipelineEnabled &&
-            _waterfallRenderQuality == WaterfallRenderQuality.High &&
-            !m_bForceCPURendering && m_eRenderPath == DXRenderPath.Hardware;
+        private static bool ExactNativeGPURequested
+        {
+            get
+            {
+                EnsureNativeGPUWaterfallSettingsLoaded();
+                return _gpuWaterfallPipelineEnabled &&
+                       _waterfallRenderQuality == WaterfallRenderQuality.High &&
+                       !m_bForceCPURendering && m_eRenderPath == DXRenderPath.Hardware;
+            }
+        }
 
         private static class ExactGpuNative
         {
