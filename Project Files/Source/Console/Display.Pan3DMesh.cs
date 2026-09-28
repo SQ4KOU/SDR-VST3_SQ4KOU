@@ -885,25 +885,23 @@ namespace Thetis
         {
             int grid_min = _meshParams.GridMin;
             var palette = new uint[MeshPaletteSize];
-            bool local_mox = localMox(_meshParams.RX);
 
-            // Match the live panadapter colour path. RX may use 3D Waterfall Sync
-            // and perceptual colormaps; TX deliberately does not. During MOX the
-            // surface must follow the TX display gradient / TX data-line colour,
-            // otherwise the GPU history turns into an unrelated RX waterfall palette.
-            bool useWaterfallSync = _pan3DWaterfallSync && !local_mox;
+            // 3D palette is a GLOBAL visual setting. MOX may change the spectrum data
+            // and amplitude scale, but must not switch the 3D surface to a TX/RX-specific
+            // colour source. Build one normalized palette and apply it identically in RX/TX.
+            bool useWaterfallSync = _pan3DWaterfallSync;
             float wfLowThreshold = 0f, wfHighThreshold = 0f;
             if (useWaterfallSync)
                 useWaterfallSync = Get3DWfSyncThresholds(_meshParams.RX, out wfLowThreshold, out wfHighThreshold);
 
             int colorMapIdx = _pan3DColorMap;
-            bool useColormap = colorMapIdx > 0 && !local_mox && !useWaterfallSync;
+            bool useColormap = colorMapIdx > 0 && !useWaterfallSync;
             if (useColormap && _colormapLUT == null) BuildColormapLUT();
 
             const int gradPaletteSize = 64;
             System.Drawing.Color[] gradPalette = null;
-            bool useGradient = !useWaterfallSync && !useColormap && m_bUseLinearGradient &&
-                (local_mox ? console.SetupForm?.TXGradPicker != null : console.SetupForm?.RX1GradPicker != null);
+            bool useGradient = !useWaterfallSync && !useColormap &&
+                m_bUseLinearGradient && console.SetupForm?.RX1GradPicker != null;
             if (useGradient)
             {
                 try
@@ -913,9 +911,7 @@ namespace Thetis
                     {
                         float t = (float)i / (gradPaletteSize - 1);
                         float dBm = grid_min + t * yRange;
-                        gradPalette[i] = local_mox
-                            ? console.SetupForm.TXGradPicker.GetColourForDBM(dBm)
-                            : console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
+                        gradPalette[i] = console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
                     }
                 }
                 catch
@@ -928,37 +924,46 @@ namespace Thetis
             for (int i = 0; i < MeshPaletteSize; i++)
             {
                 float strength = i / (float)(MeshPaletteSize - 1);
-                float dBm = grid_min + strength * yRange;
                 int R, G, B;
+
                 if (useColormap)
                 {
                     int ci = (int)(strength * 255f);
+                    if (ci < 0) ci = 0; else if (ci > 255) ci = 255;
                     int o = ((colorMapIdx - 1) * 256 + ci) * 3;
-                    R = _colormapLUT[o]; G = _colormapLUT[o + 1]; B = _colormapLUT[o + 2];
+                    R = _colormapLUT[o];
+                    G = _colormapLUT[o + 1];
+                    B = _colormapLUT[o + 2];
                 }
                 else if (useWaterfallSync)
                 {
-                    GetWaterfallColor(dBm, wfLowThreshold, wfHighThreshold, _rx1_color_scheme,
+                    // Preserve the RX waterfall palette visually, but sample it by
+                    // normalized strength. Never feed TX dBm values into RX thresholds.
+                    float paletteDbm = wfLowThreshold + strength * (wfHighThreshold - wfLowThreshold);
+                    GetWaterfallColor(paletteDbm, wfLowThreshold, wfHighThreshold, _rx1_color_scheme,
                         waterfall_low_color, _rx1_waterfall_grad, _rx1_waterfall_grad_ok, out R, out G, out B);
                 }
                 else if (useGradient)
                 {
                     int pIdx = (int)(strength * (gradPaletteSize - 1));
-                    R = gradPalette[pIdx].R; G = gradPalette[pIdx].G; B = gradPalette[pIdx].B;
+                    if (pIdx < 0) pIdx = 0;
+                    if (pIdx >= gradPaletteSize) pIdx = gradPaletteSize - 1;
+                    R = gradPalette[pIdx].R;
+                    G = gradPalette[pIdx].G;
+                    B = gradPalette[pIdx].B;
                 }
                 else
                 {
                     float bright = 0.25f + 0.75f * strength;
-                    System.Drawing.Color baseColor = local_mox ? tx_data_line_color : _pan3DLineColor;
-                    R = (int)(baseColor.R * bright);
-                    G = (int)(baseColor.G * bright);
-                    B = (int)(baseColor.B * bright);
+                    R = (int)(_pan3DLineColor.R * bright);
+                    G = (int)(_pan3DLineColor.G * bright);
+                    B = (int)(_pan3DLineColor.B * bright);
                 }
+
                 if (R < 0) R = 0; else if (R > 255) R = 255;
                 if (G < 0) G = 0; else if (G > 255) G = 255;
                 if (B < 0) B = 0; else if (B > 255) B = 255;
-                // B8G8R8A8_UNorm memory order is [B,G,R,A]; as a little-endian
-                // uint that is A<<24 | R<<16 | G<<8 | B
+
                 palette[i] = 0xFF000000u | ((uint)R << 16) | ((uint)G << 8) | (uint)B;
             }
             return palette;
