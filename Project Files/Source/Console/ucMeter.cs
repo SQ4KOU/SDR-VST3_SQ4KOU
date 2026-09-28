@@ -284,7 +284,7 @@ namespace Thetis
         {
             // Floating Windows Forms are position-locked by default.
             // Hold Shift while pressing/dragging to unlock window movement.
-            if (_floating && !Common.ShiftKeyDown) return;
+            if (_floating && !ShiftMoveModifierDown()) return;
 
             if (_floating)
             {
@@ -324,7 +324,7 @@ namespace Thetis
         {
             if (_dragging)
             {
-                if (_floating && !Common.ShiftKeyDown)
+                if (_floating && !ShiftMoveModifierDown())
                 {
                     // Releasing Shift immediately re-locks the floating window.
                     _point = Point.Empty;
@@ -726,7 +726,7 @@ namespace Thetis
 
         private void lblRX_MouseDown(object sender, MouseEventArgs e)
         {
-            if (_floating && !Common.ShiftKeyDown) return;
+            if (_floating && !ShiftMoveModifierDown()) return;
 
             if (_floating)
             {
@@ -753,7 +753,7 @@ namespace Thetis
         {
             if (_dragging)
             {
-                if (_floating && !Common.ShiftKeyDown)
+                if (_floating && !ShiftMoveModifierDown())
                 {
                     _point = Point.Empty;
                     _dragging = false;
@@ -1262,15 +1262,17 @@ namespace Thetis
                 mouseLeave();
         }
 
+        private static bool ShiftMoveModifierDown()
+        {
+            return Common.ShiftKeyDown ||
+                (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+        }
+
         private void pnlContainer_MouseDown(object sender, MouseEventArgs e)
         {
-            // Floating meter windows are intentionally borderless. When the top
-            // controls are hidden, keep the same 18 px top strip as an invisible
-            // drag handle so the user can still reposition the window.
-            if (!_floating || !Common.ShiftKeyDown || e.Button != MouseButtons.Left) return;
-
-            Rectangle dragStrip = new Rectangle(0, 0, pnlContainer.ClientSize.Width, pnlBar.Height);
-            if (!dragStrip.Contains(e.Location)) return;
+            // Floating meter windows are position-locked by default.
+            // Shift + left-drag anywhere on the meter surface moves the window.
+            if (!_floating || !ShiftMoveModifierDown() || e.Button != MouseButtons.Left) return;
 
             pnlBar_MouseDown(pnlBar, e);
         }

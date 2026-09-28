@@ -32597,6 +32597,8 @@ namespace Thetis
             private ID2D1StrokeStyle _dash_style;
 
             private Guid _touch_guid;
+            private bool _shiftWindowDrag;
+            private bool _suppressNextMouseClick;
 
             private Display.AdaptorInfo _adaptor;
 
@@ -32619,6 +32621,8 @@ namespace Thetis
                 _meter = meter;
                 _highlightEdge = false;
                 _enabled = meter.Enabled;
+                _shiftWindowDrag = false;
+                _suppressNextMouseClick = false;
 
                 if (_console.TouchSupport)
                     _touch_guid = TouchHandler.EnableTouchSupport(target, HandleTouchDown, HandleTouchMove, HandleTouchUp, TouchHandler.TOUCHEVENTF_DOWN | TouchHandler.TOUCHEVENTF_MOVE | TouchHandler.TOUCHEVENTF_UP, _sId);
@@ -33768,6 +33772,8 @@ namespace Thetis
             }
             private void OnMouseCaptureChanged(object sender, System.EventArgs e)
             {
+                _shiftWindowDrag = false;
+
                 Panel pb = sender as Panel;
                 if (pb == null) return;
                 string sId = pb.Tag.ToString();
@@ -33789,6 +33795,8 @@ namespace Thetis
             }
             private void OnMouseMove(object sender, System.Windows.Forms.MouseEventArgs e)
             {
+                if (_shiftWindowDrag) return;
+
                 lock (_metersLock)
                 {
                     Panel pb = sender as Panel;
@@ -33889,6 +33897,12 @@ namespace Thetis
             }
             private void OnMouseClick(object sender, MouseEventArgs e)
             {
+                if (_suppressNextMouseClick)
+                {
+                    _suppressNextMouseClick = false;
+                    return;
+                }
+
                 lock (_metersLock)
                 {
                     Panel pb = sender as Panel;
@@ -33950,6 +33964,16 @@ namespace Thetis
                     string sId = pb.Tag.ToString();
                     if (!_meters.ContainsKey(sId)) return;
 
+                    bool shiftDown = Common.ShiftKeyDown ||
+                        (System.Windows.Forms.Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+                    if (shiftDown && e.Button == MouseButtons.Left &&
+                        _lstUCMeters.ContainsKey(sId) && _lstUCMeters[sId].Floating)
+                    {
+                        _shiftWindowDrag = true;
+                        _suppressNextMouseClick = true;
+                        return;
+                    }
+
                     clsMeter m = _meters[sId];
 
                     lock (m._meterItemsLock)
@@ -33997,6 +34021,12 @@ namespace Thetis
             }
             private void OnMouseUp(object sender, System.Windows.Forms.MouseEventArgs e)
             {
+                if (_shiftWindowDrag)
+                {
+                    _shiftWindowDrag = false;
+                    return;
+                }
+
                 lock (_metersLock)
                 {
                     Panel pb = sender as Panel;
