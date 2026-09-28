@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace Thetis
 {
@@ -41,6 +43,139 @@ namespace Thetis
         private static WaterfallPalette _paletteDeepBlue;
         private static WaterfallPalette _paletteEnhanced256;
         private static WaterfallPalette _paletteGrayscale256;
+
+        private const string NativeWaterfallSettingsTable = "GPUWaterfallRuntime";
+        private static bool _nativeWaterfallSettingsLoaded;
+
+        internal static void EnsureNativeGPUWaterfallSettingsLoaded()
+        {
+            if (_nativeWaterfallSettingsLoaded) return;
+            _nativeWaterfallSettingsLoaded = true;
+
+            try
+            {
+                Dictionary<string, string> d = DB.GetVarsDictionary(NativeWaterfallSettingsTable);
+                if (d == null || d.Count == 0) return;
+
+                bool B(string k, bool v) => d.TryGetValue(k, out string s) && bool.TryParse(s, out bool x) ? x : v;
+                int I(string k, int v) => d.TryGetValue(k, out string s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ? x : v;
+                float F(string k, float v) => d.TryGetValue(k, out string s) && float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ? x : v;
+                double D(string k, double v) => d.TryGetValue(k, out string s) && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double x) ? x : v;
+
+                _gpuWaterfallPipelineEnabled = B("PipelineEnabled", _gpuWaterfallPipelineEnabled);
+                _gpuWaterfallFFTSize = I("FFTSize", _gpuWaterfallFFTSize);
+                _gpuWaterfallOverlapPercent = I("OverlapPercent", _gpuWaterfallOverlapPercent);
+                _gpuWaterfallAutoOverlap = B("AutoOverlap", _gpuWaterfallAutoOverlap);
+                _gpuWaterfallWindowType = (GPUWaterfallWindowType)I("WindowType", (int)_gpuWaterfallWindowType);
+                _gpuWaterfallKaiserBeta = D("KaiserBeta", _gpuWaterfallKaiserBeta);
+                _gpuWaterfallMagnitudeMode = (GPUWaterfallMagnitudeMode)I("MagnitudeMode", (int)_gpuWaterfallMagnitudeMode);
+                _gpuWaterfallLanczosWindow = I("LanczosWindow", _gpuWaterfallLanczosWindow);
+                _gpuWaterfallResamplingMode = (GPUWaterfallResamplingMode)I("ResamplingMode", (int)_gpuWaterfallResamplingMode);
+                _waterfallRenderQuality = (WaterfallRenderQuality)I("RenderQuality", (int)_waterfallRenderQuality);
+
+                _nfMode = (NoiseFloorPro.DetectionMode)I("NFMode", (int)_nfMode);
+                _nfLowPct = F("NFLowPct", _nfLowPct);
+                _nfHighPct = F("NFHighPct", _nfHighPct);
+                _wfAgcSmoothing = F("AgcSmoothing", _wfAgcSmoothing);
+                _autoHighEnabledRX1 = B("AutoHighRX1", _autoHighEnabledRX1);
+                _autoHighEnabledRX2 = B("AutoHighRX2", _autoHighEnabledRX2);
+                _autoHighMarginDb = F("AutoHighMarginDb", _autoHighMarginDb);
+                _temporalEnabled = B("TemporalEnabled", _temporalEnabled);
+                _temporalAlpha = F("TemporalStrength", _temporalAlpha);
+                _autoThresholdEnabled = B("AutoThresholdEnabled", _autoThresholdEnabled);
+                _autoThresholdFineOffset = F("AutoThresholdFineOffset", _autoThresholdFineOffset);
+                _zoomAdaptiveEnabled = B("ZoomAdaptive", _zoomAdaptiveEnabled);
+                _autoEnableGPU = B("AutoEnableGPU", _autoEnableGPU);
+                _gpuEffectsEnabled = B("GPUEffectsEnabled", _gpuEffectsEnabled);
+
+                WaterfallEnhancer.SetColorDepth((WaterfallEnhancer.ColorDepth)I("ColorDepth", (int)WaterfallEnhancer.Depth));
+                WaterfallEnhancer.SetToneMap((WaterfallEnhancer.ToneMapMode)I("ToneMap", (int)WaterfallEnhancer.ToneMap));
+                WaterfallEnhancer.SetPaletteSharpness(F("PaletteSharpness", WaterfallEnhancer.PaletteSharpness));
+                WaterfallEnhancer.SetPaletteContrast(F("PaletteContrast", WaterfallEnhancer.PaletteContrast));
+                WaterfallEnhancer.SetGamma(F("Gamma", WaterfallEnhancer.Gamma));
+                WaterfallEnhancer.SetDither(B("Dither", WaterfallEnhancer.DitherEnabled));
+                WaterfallEnhancer.SetQuality((WaterfallEnhancer.QualityLevel)I("QualityLevel", (int)WaterfallEnhancer.Quality));
+
+                if (console != null)
+                {
+                    int rx1 = I("RX1Palette", (int)console.RX1ColourScheme);
+                    int rx2 = I("RX2Palette", (int)console.RX2ColourScheme);
+                    int tx = I("TXPalette", (int)console.TXColourScheme);
+                    if (Enum.IsDefined(typeof(ColorScheme), rx1)) console.RX1ColourScheme = (ColorScheme)rx1;
+                    if (Enum.IsDefined(typeof(ColorScheme), rx2)) console.RX2ColourScheme = (ColorScheme)rx2;
+                    if (Enum.IsDefined(typeof(ColorScheme), tx)) console.TXColourScheme = (ColorScheme)tx;
+                }
+
+                GPUWaterfallLogger.Log("STATE", "Loaded native GPU Waterfall runtime settings.");
+            }
+            catch (Exception ex)
+            {
+                GPUWaterfallLogger.Log("STATE-LOAD-FAIL", ex.Message);
+            }
+        }
+
+        internal static void PersistNativeGPUWaterfallSettings()
+        {
+            try
+            {
+                Dictionary<string, string> d = DB.GetVarsDictionary(NativeWaterfallSettingsTable) ?? new Dictionary<string, string>();
+
+                void Put(string k, object v)
+                {
+                    if (v is IFormattable fmt) d[k] = fmt.ToString(null, CultureInfo.InvariantCulture);
+                    else d[k] = v?.ToString() ?? "";
+                }
+
+                Put("PipelineEnabled", _gpuWaterfallPipelineEnabled);
+                Put("FFTSize", _gpuWaterfallFFTSize);
+                Put("OverlapPercent", _gpuWaterfallOverlapPercent);
+                Put("AutoOverlap", _gpuWaterfallAutoOverlap);
+                Put("WindowType", (int)_gpuWaterfallWindowType);
+                Put("KaiserBeta", _gpuWaterfallKaiserBeta);
+                Put("MagnitudeMode", (int)_gpuWaterfallMagnitudeMode);
+                Put("LanczosWindow", _gpuWaterfallLanczosWindow);
+                Put("ResamplingMode", (int)_gpuWaterfallResamplingMode);
+                Put("RenderQuality", (int)_waterfallRenderQuality);
+
+                Put("NFMode", (int)_nfMode);
+                Put("NFLowPct", _nfLowPct);
+                Put("NFHighPct", _nfHighPct);
+                Put("AgcSmoothing", _wfAgcSmoothing);
+                Put("AutoHighRX1", _autoHighEnabledRX1);
+                Put("AutoHighRX2", _autoHighEnabledRX2);
+                Put("AutoHighMarginDb", _autoHighMarginDb);
+                Put("TemporalEnabled", _temporalEnabled);
+                Put("TemporalStrength", _temporalAlpha);
+                Put("AutoThresholdEnabled", _autoThresholdEnabled);
+                Put("AutoThresholdFineOffset", _autoThresholdFineOffset);
+                Put("ZoomAdaptive", _zoomAdaptiveEnabled);
+                Put("AutoEnableGPU", _autoEnableGPU);
+                Put("GPUEffectsEnabled", _gpuEffectsEnabled);
+
+                Put("ColorDepth", (int)WaterfallEnhancer.Depth);
+                Put("ToneMap", (int)WaterfallEnhancer.ToneMap);
+                Put("PaletteSharpness", WaterfallEnhancer.PaletteSharpness);
+                Put("PaletteContrast", WaterfallEnhancer.PaletteContrast);
+                Put("Gamma", WaterfallEnhancer.Gamma);
+                Put("Dither", WaterfallEnhancer.DitherEnabled);
+                Put("QualityLevel", (int)WaterfallEnhancer.Quality);
+
+                if (console != null)
+                {
+                    Put("RX1Palette", (int)console.RX1ColourScheme);
+                    Put("RX2Palette", (int)console.RX2ColourScheme);
+                    Put("TXPalette", (int)console.TXColourScheme);
+                }
+
+                DB.SaveVarsDictionary(NativeWaterfallSettingsTable, ref d, true);
+                DB.WriteDB();
+                _nativeWaterfallSettingsLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                GPUWaterfallLogger.Log("STATE-SAVE-FAIL", ex.Message);
+            }
+        }
 
         public static event Action<int, double> GPUWaterfallEffectiveOverlapChanged;
 
