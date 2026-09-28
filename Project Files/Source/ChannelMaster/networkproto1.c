@@ -68,6 +68,19 @@ int SendStartToMetis(void) {
 	return 0;
 }
 
+/* Update Metis run bits without restarting the Protocol-1 DDC/audio path. */
+int SendRunToMetis(void) {
+	struct outdgram { unsigned char packetbuf[64]; } outpacket;
+	if (listenSock == INVALID_SOCKET) return -1;
+	memset(outpacket.packetbuf, 0, sizeof(outpacket));
+	outpacket.packetbuf[0] = 0xef;
+	outpacket.packetbuf[1] = 0xfe;
+	outpacket.packetbuf[2] = 0x04;
+	/* TX -> IN2 OFF: EP4/WideBand is never requested while keyed. */
+	outpacket.packetbuf[3] = 0x01 | ((!XmitBit && (prn->wb_enable & 0x01)) ? 0x02 : 0x00);
+	return sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), prn->base_outbound_port);
+}
+
 PORT
 int SendStopToMetis() {
 	int starting_seq;
