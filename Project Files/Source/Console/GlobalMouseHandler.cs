@@ -143,12 +143,23 @@ namespace Thetis
 
         private const string NativePanelLocationKeyPrefix = "NativePanelLocation.";
 
+        private static bool PersistNativePanelLocation(string name)
+        {
+            // RX2 panels are positioned by the native RX2 layout logic. Persisting and
+            // restoring their coordinates while RX2 is OFF can pull those panels back
+            // onto the Console even though RX2 itself was never enabled.
+            return _nativeMovablePanelNames.Contains(name) &&
+                   !name.StartsWith("panelRX2", StringComparison.Ordinal);
+        }
+
         private void AppendNativePanelLocations(List<string> state)
         {
             if (state == null) return;
 
             foreach (string name in _nativeMovablePanelNames)
             {
+                if (!PersistNativePanelLocation(name)) continue;
+
                 Control panel = Controls.Cast<Control>()
                     .FirstOrDefault(c => c.Parent == this && c.Name == name);
 
@@ -173,7 +184,7 @@ namespace Thetis
                     continue;
 
                 string name = key.Substring(NativePanelLocationKeyPrefix.Length);
-                if (!_nativeMovablePanelNames.Contains(name))
+                if (!PersistNativePanelLocation(name))
                     continue;
 
                 string[] xy = entry.Substring(slash + 1).Split('|');
