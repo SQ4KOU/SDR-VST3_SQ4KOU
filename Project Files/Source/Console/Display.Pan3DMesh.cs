@@ -564,7 +564,7 @@ namespace Thetis
                 return false;
             if (!_pan3DEnabled || _3dHistoryBuffer == null || _3dHistoryCount < 3 || !_meshParams.Valid)
                 return false;
-            if (_paused_display || localMox(1)) return false;
+            // TX/RX must not change the renderer path. 3D GPU acceleration is governed only\n            // by the global 3D/GPU controls; MOX changes data/levels, not Hardware vs CPU.\n            if (_paused_display) return false;
 
             try
             {
