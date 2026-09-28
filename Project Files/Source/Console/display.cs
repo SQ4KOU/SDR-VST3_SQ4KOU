@@ -258,7 +258,7 @@ namespace Thetis
         private static float[] waterfall_data;
 
         // 3D panadapter ring buffer
-        public const int Max3DHistoryLines = 60;
+        public const int Max3DHistoryLines = 240;
         public const int Max3DLinesSoftwareRender = 15; // WARP rasterises every stroke on the CPU, keep the row count sane
         private static float[][] _3dHistoryBuffer;
         private static int _3dHistoryCount;
