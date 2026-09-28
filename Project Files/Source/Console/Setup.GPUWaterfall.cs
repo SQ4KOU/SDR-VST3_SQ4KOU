@@ -933,7 +933,6 @@ namespace Thetis
 
 	private void SyncGPUWaterfallPipelineEnabled(int target)
 	{
-		bool highQuality = Display.WaterfallQuality == Display.WaterfallRenderQuality.High;
 		bool fftRequested = chkGPUWaterfallFFT == null || chkGPUWaterfallFFT.Checked;
 		bool gpuSelectionRequestsAcceleration = comboGPU == null || comboGPU.SelectedIndex != 1;
 		bool detectionPending = gpuSelectionRequestsAcceleration &&
@@ -944,11 +943,11 @@ namespace Thetis
 		// and does not need to be torn down during this detection window.
 		if (detectionPending)
 		{
-			Display.GPUWaterfallPipelineEnabled = fftRequested && highQuality;
+			Display.GPUWaterfallPipelineEnabled = fftRequested;
 			return;
 		}
 
-		Display.GPUWaterfallPipelineEnabled = fftRequested && target >= 1 && highQuality;
+		Display.GPUWaterfallPipelineEnabled = fftRequested && target >= 1;
 	}
 
 
