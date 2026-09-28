@@ -885,20 +885,25 @@ namespace Thetis
         {
             int grid_min = _meshParams.GridMin;
             var palette = new uint[MeshPaletteSize];
+            bool local_mox = localMox(_meshParams.RX);
 
-            // mirror the priority logic of DrawPanadapter3DHistoryDX2D
-            bool useWaterfallSync = _pan3DWaterfallSync;
+            // Match the live panadapter colour path. RX may use 3D Waterfall Sync
+            // and perceptual colormaps; TX deliberately does not. During MOX the
+            // surface must follow the TX display gradient / TX data-line colour,
+            // otherwise the GPU history turns into an unrelated RX waterfall palette.
+            bool useWaterfallSync = _pan3DWaterfallSync && !local_mox;
             float wfLowThreshold = 0f, wfHighThreshold = 0f;
             if (useWaterfallSync)
                 useWaterfallSync = Get3DWfSyncThresholds(_meshParams.RX, out wfLowThreshold, out wfHighThreshold);
 
             int colorMapIdx = _pan3DColorMap;
-            bool useColormap = colorMapIdx > 0 && !useWaterfallSync;
+            bool useColormap = colorMapIdx > 0 && !local_mox && !useWaterfallSync;
             if (useColormap && _colormapLUT == null) BuildColormapLUT();
 
             const int gradPaletteSize = 64;
             System.Drawing.Color[] gradPalette = null;
-            bool useGradient = !useWaterfallSync && m_bUseLinearGradient && console.SetupForm?.RX1GradPicker != null;
+            bool useGradient = !useWaterfallSync && !useColormap && m_bUseLinearGradient &&
+                (local_mox ? console.SetupForm?.TXGradPicker != null : console.SetupForm?.RX1GradPicker != null);
             if (useGradient)
             {
                 try
@@ -908,7 +913,9 @@ namespace Thetis
                     {
                         float t = (float)i / (gradPaletteSize - 1);
                         float dBm = grid_min + t * yRange;
-                        gradPalette[i] = console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
+                        gradPalette[i] = local_mox
+                            ? console.SetupForm.TXGradPicker.GetColourForDBM(dBm)
+                            : console.SetupForm.RX1GradPicker.GetColourForDBM(dBm);
                     }
                 }
                 catch
@@ -942,9 +949,10 @@ namespace Thetis
                 else
                 {
                     float bright = 0.25f + 0.75f * strength;
-                    R = (int)(_pan3DLineColor.R * bright);
-                    G = (int)(_pan3DLineColor.G * bright);
-                    B = (int)(_pan3DLineColor.B * bright);
+                    Color baseColor = local_mox ? tx_data_line_color : _pan3DLineColor;
+                    R = (int)(baseColor.R * bright);
+                    G = (int)(baseColor.G * bright);
+                    B = (int)(baseColor.B * bright);
                 }
                 if (R < 0) R = 0; else if (R > 255) R = 255;
                 if (G < 0) G = 0; else if (G > 255) G = 255;
