@@ -1,0 +1,208 @@
+using System;
+
+namespace Thetis
+{
+    partial class Display
+    {
+        public enum WaterfallRenderQuality { Low, Medium, High }
+
+        private const int GPU_WATERFALL_IQ_CAPACITY = 524288;
+        private static bool _gpuWaterfallPipelineEnabled;
+        private static int _gpuWaterfallFFTSize = 16384;
+        private static int _gpuWaterfallOverlapPercent = 85;
+        private static bool _gpuWaterfallAutoOverlap;
+        private static GPUWaterfallWindowType _gpuWaterfallWindowType = GPUWaterfallWindowType.Nuttall;
+        private static double _gpuWaterfallKaiserBeta = 6.0;
+        private static GPUWaterfallMagnitudeMode _gpuWaterfallMagnitudeMode = GPUWaterfallMagnitudeMode.PeakHoldPower;
+        private static int _gpuWaterfallLanczosWindow = 3;
+        private static GPUWaterfallResamplingMode _gpuWaterfallResamplingMode = GPUWaterfallResamplingMode.Quality;
+        private static double[] _gpuLastEffectiveOverlap = new double[2] { -1.0, -1.0 };
+
+        private static WaterfallRenderQuality _waterfallRenderQuality = WaterfallRenderQuality.High;
+        private static NoiseFloorPro.DetectionMode _nfMode = NoiseFloorPro.DetectionMode.Average;
+        private static float _nfLowPct = 10f;
+        private static float _nfHighPct = 99f;
+        private static float _wfAgcSmoothing = 0.4f;
+        private static float _autoHighMarginDb = 6f;
+        private static float _temporalAlpha;
+        private static float _autoThresholdFineOffset = -3f;
+        private static bool _autoHighEnabledRX1;
+        private static bool _autoHighEnabledRX2;
+        private static bool _temporalEnabled;
+        private static bool _autoThresholdEnabled;
+        private static bool _zoomAdaptiveEnabled = true;
+        private static bool _autoEnableGPU = true;
+        private static bool _gpuEffectsEnabled = true;
+        private static float _autoHighRX1 = -40f;
+        private static float _autoHighRX2 = -40f;
+
+        private static WaterfallPalette _paletteConsole;
+        private static WaterfallPalette _paletteThermal;
+        private static WaterfallPalette _paletteDeepBlue;
+        private static WaterfallPalette _paletteEnhanced256;
+        private static WaterfallPalette _paletteGrayscale256;
+
+        public static event Action<int, double> GPUWaterfallEffectiveOverlapChanged;
+
+        public static bool GPUWaterfallPipelineEnabled
+        {
+            get => _gpuWaterfallPipelineEnabled;
+            set
+            {
+                if (_gpuWaterfallPipelineEnabled == value) return;
+                GPUWaterfallLogger.Log("STATE", "GPUWaterfallPipelineEnabled " + _gpuWaterfallPipelineEnabled + " -> " + value);
+                _gpuWaterfallPipelineEnabled = value;
+                try
+                {
+                    for (int ch = 0; ch < 2; ch++)
+                    {
+                        if (value) ExactGpuNative.CM_WaterfallIQ_Init(ch, GPU_WATERFALL_IQ_CAPACITY);
+                        ExactGpuNative.CM_WaterfallIQ_SetEnabled(ch, value && !m_bForceCPURendering ? 1 : 0);
+                    }
+                }
+                catch { }
+                ResetExactGPUWaterfallSourceForModeChange(value && !m_bForceCPURendering);
+                SetOwns(1, false);
+                SetOwns(2, false);
+            }
+        }
+
+        public static int GPUWaterfallFFTSize
+        {
+            get => _gpuWaterfallFFTSize;
+            set
+            {
+                int n = Math.Max(1024, Math.Min(262144, value));
+                int p = 1; while (p < n && p < 262144) p <<= 1;
+                if (_gpuWaterfallFFTSize == p) return;
+                _gpuWaterfallFFTSize = p;
+                ResetExactGPUWaterfallSourceForModeChange(_gpuWaterfallPipelineEnabled && !m_bForceCPURendering);
+            }
+        }
+
+        public static int GPUWaterfallOverlapPercent
+        {
+            get => _gpuWaterfallOverlapPercent;
+            set
+            {
+                int v = Math.Max(0, Math.Min(95, value));
+                if (_gpuWaterfallOverlapPercent == v) return;
+                _gpuWaterfallOverlapPercent = v;
+                ResetExactGPUWaterfallSourceForModeChange(_gpuWaterfallPipelineEnabled && !m_bForceCPURendering);
+            }
+        }
+
+        public static bool GPUWaterfallAutoOverlap
+        {
+            get => _gpuWaterfallAutoOverlap;
+            set
+            {
+                if (_gpuWaterfallAutoOverlap == value) return;
+                _gpuWaterfallAutoOverlap = value;
+                ResetExactGPUWaterfallSourceForModeChange(_gpuWaterfallPipelineEnabled && !m_bForceCPURendering);
+            }
+        }
+
+        public static GPUWaterfallWindowType GPUWaterfallWindowType { get => _gpuWaterfallWindowType; set => _gpuWaterfallWindowType = value; }
+        public static double GPUWaterfallKaiserBeta { get => _gpuWaterfallKaiserBeta; set => _gpuWaterfallKaiserBeta = Math.Max(0.0, Math.Min(20.0, value)); }
+        public static GPUWaterfallMagnitudeMode GPUWaterfallMagnitudeMode { get => _gpuWaterfallMagnitudeMode; set => _gpuWaterfallMagnitudeMode = value; }
+        public static int GPUWaterfallLanczosWindow
+        {
+            get => _gpuWaterfallLanczosWindow;
+            set { int v=Math.Max(0,Math.Min(4,value)); if(v==1)v=2; _gpuWaterfallLanczosWindow=v; }
+        }
+        public static GPUWaterfallResamplingMode GPUWaterfallResamplingMode { get => _gpuWaterfallResamplingMode; set => _gpuWaterfallResamplingMode = value; }
+
+        public static WaterfallRenderQuality WaterfallQuality { get => _waterfallRenderQuality; set => _waterfallRenderQuality = value; }
+        public static NoiseFloorPro.DetectionMode NFMode { get => _nfMode; set => _nfMode = value; }
+        public static float NFLowPct { get => _nfLowPct; set => _nfLowPct = Math.Max(1f, Math.Min(49f, value)); }
+        public static float NFHighPct { get => _nfHighPct; set => _nfHighPct = Math.Max(50f, Math.Min(99.9f, value)); }
+        public static float WaterfallAgcSmoothing { get => _wfAgcSmoothing; set => _wfAgcSmoothing = Math.Max(0.05f, Math.Min(0.9f, value)); }
+        public static bool AutoHighEnabledRX1 { get => _autoHighEnabledRX1; set => _autoHighEnabledRX1 = value; }
+        public static bool AutoHighEnabledRX2 { get => _autoHighEnabledRX2; set => _autoHighEnabledRX2 = value; }
+        public static float AutoHighMarginDb { get => _autoHighMarginDb; set => _autoHighMarginDb = Math.Max(0f, Math.Min(30f, value)); }
+        public static bool TemporalEnabled { get => _temporalEnabled; set => _temporalEnabled = value; }
+        public static float TemporalStrength { get => _temporalAlpha; set => _temporalAlpha = Math.Max(0f, Math.Min(0.5f, value)); }
+        public static bool AutoThresholdEnabled { get => _autoThresholdEnabled; set => _autoThresholdEnabled = value; }
+        public static float AutoThresholdFineOffset { get => _autoThresholdFineOffset; set => _autoThresholdFineOffset = Math.Max(-20f, Math.Min(20f, value)); }
+        public static bool ZoomAdaptiveEnabled { get => _zoomAdaptiveEnabled; set => _zoomAdaptiveEnabled = value; }
+        public static bool AutoEnableGPU { get => _autoEnableGPU; set => _autoEnableGPU = value; }
+        public static bool GPUEffectsEnabled { get => _gpuEffectsEnabled; set => _gpuEffectsEnabled = value; }
+        public static string GPUName => _gpu ?? "unknown";
+        public static int GPUDetectionLevel => (int)GPUDetector.Level;
+
+        internal static void DetectGPUCapabilitiesFromD2D()
+        {
+            GPUDetector.Refresh(!m_bForceCPURendering && m_eRenderPath == DXRenderPath.Hardware && _device != null && _bDX2Setup, GPUName);
+        }
+
+        internal static void ResetTemporalWaterfallState() { }
+
+        public static void ApplyWaterfallColorDepth(WaterfallEnhancer.ColorDepth depth)
+        {
+            WaterfallEnhancer.SetColorDepth(depth);
+        }
+
+        internal static void NotifyGPUWaterfallColorDepthChanged()
+        {
+            SetOwns(1, false);
+            SetOwns(2, false);
+            GPUWaterfallLogger.Log("STATE", "GPU waterfall color depth changed to " + WaterfallEnhancer.Depth);
+        }
+
+        private static void LogGPU(string message) => GPUWaterfallLogger.Log("GPU-DISP", message);
+
+        private static WaterfallPalette GetGPUWaterfallPalette(ColorScheme scheme)
+        {
+            if (scheme == ColorScheme.Console) return _paletteConsole ??= BuildPalette(WaterfallPalette.ConsoleStops);
+            if (scheme == ColorScheme.Thermal) return _paletteThermal ??= BuildPalette(WaterfallPalette.ThermalStops);
+            if (scheme == ColorScheme.DeepBlue) return _paletteDeepBlue ??= BuildPalette(WaterfallPalette.DeepBlueStops);
+            if (scheme == ColorScheme.Enhanced256) return _paletteEnhanced256 ??= BuildPalette(WaterfallPalette.EnhancedStops);
+            if (scheme == ColorScheme.Grayscale256) return _paletteGrayscale256 ??= BuildPalette(WaterfallPalette.GrayscaleStops);
+            return null;
+        }
+
+        private static WaterfallPalette BuildPalette(WaterfallPalette.Stop[] stops)
+        {
+            var p = new WaterfallPalette();
+            p.Build(stops);
+            return p;
+        }
+
+        private static void ApplyWaterfallProThresholds(int rx, bool localMox, ref float lowThreshold, ref float highThreshold)
+        {
+            if (localMox) return;
+            if (rx == 2)
+            {
+                if (_autoThresholdEnabled && m_bNoiseFloorGoodRX2)
+                {
+                    float nf = m_fLerpAverageRX2 + _fNFshiftDBM;
+                    float userOffset = Math.Max(0f, Math.Min(10f, rx2_waterfall_low_threshold - nf));
+                    float range = Math.Max(10f, rx2_waterfall_high_threshold - rx2_waterfall_low_threshold);
+                    lowThreshold = nf + userOffset + _autoThresholdFineOffset;
+                    highThreshold = lowThreshold + range;
+                }
+                else if (_autoHighEnabledRX2)
+                {
+                    if (_autoHighRX2 <= -39f) _autoHighRX2 = rx2_waterfall_high_threshold;
+                    highThreshold = Math.Max(rx2_waterfall_high_threshold, _autoHighRX2 + _autoHighMarginDb);
+                }
+                return;
+            }
+
+            if (_autoThresholdEnabled && m_bNoiseFloorGoodRX1)
+            {
+                float nf = m_fLerpAverageRX1 + _fNFshiftDBM;
+                float userOffset = Math.Max(0f, Math.Min(10f, waterfall_low_threshold - nf));
+                float range = Math.Max(10f, waterfall_high_threshold - waterfall_low_threshold);
+                lowThreshold = nf + userOffset + _autoThresholdFineOffset;
+                highThreshold = lowThreshold + range;
+            }
+            else if (_autoHighEnabledRX1)
+            {
+                if (_autoHighRX1 <= -39f) _autoHighRX1 = waterfall_high_threshold;
+                highThreshold = Math.Max(waterfall_high_threshold, _autoHighRX1 + _autoHighMarginDb);
+            }
+        }
+    }
+}
