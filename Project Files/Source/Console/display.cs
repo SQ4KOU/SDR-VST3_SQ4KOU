@@ -5724,8 +5724,10 @@ namespace Thetis
             }
             yRange = grid_max - grid_min;
 
-                // draw 3D history BEFORE the grid, so filters/cursor render on top
-                if (draw3DHistory && !local_mox)
+                // draw 3D history BEFORE the grid, so filters/cursor render on top.
+                // 3D is a global display mode and must remain active during TX as well;
+                // TX/RX only selects the data/grid/colour source, never the 2D/3D mode.
+                if (draw3DHistory)
                 {
                     // snapshot params for the GPU mesh path (consumed pre-BeginDraw next frame)
                     CaptureMeshFrameParams(nVerticalShift, W, H, rx, nDecimatedWidth, m_nDecimation, grid_min, grid_max);
