@@ -3250,6 +3250,11 @@ namespace Thetis
             a.Add("panelBandHF.Visible/" + _bands_HF_selected);
             a.Add("panelBandVHF.Visible/" + _bands_VHF_selected);
             a.Add("panelBandGEN.Visible/" + _bands_GEN_selected);
+
+            // SQ4KOU: persist positions of movable native Console panels in the
+            // existing State table together with the rest of the UI state.
+            AppendNativePanelLocations(a);
+
             a.Add("iscollapsed/" + _iscollapsed);
             a.Add("isexpanded/" + _isexpanded);
             a.Add("diversity/" + _diversity2);
@@ -46034,6 +46039,11 @@ namespace Thetis
             toolStripStatusLabel_UTCTime.Width = 92;
             toolStripStatusLabel_Date.Width = 104;
             toolStripStatusLabel_LocalTime.Width = 92;
+
+            // Apply saved native panel positions only after the complete Console
+            // layout has finished, otherwise Expand/Collapse startup logic can
+            // overwrite them with designer defaults.
+            RestoreNativePanelLocationsFromState();
         }
 
         public bool TwoTone
