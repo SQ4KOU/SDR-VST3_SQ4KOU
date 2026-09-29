@@ -102,6 +102,16 @@ namespace Thetis
         private Control _nativePanelDragPrimary;
         private Dictionary<Control, Point> _nativePanelDragOrigins;
         private Point _nativePanelDragMouseStart;
+        private Point? _nativeModeSpecificSharedLocation;
+        private bool _nativeApplyingModeSpecificLocation;
+
+        private static readonly string[] _nativeModeSpecificPanelNames =
+        {
+            "panelModeSpecificCW",
+            "panelModeSpecificPhone",
+            "panelModeSpecificDigital",
+            "panelModeSpecificFM"
+        };
 
         private static readonly HashSet<string> _nativeMovablePanelNames =
             new HashSet<string>(StringComparer.Ordinal)
@@ -155,6 +165,86 @@ namespace Thetis
 
             _nativePanelShiftDragFilter = new NativePanelShiftDragFilter(this);
             Application.AddMessageFilter(_nativePanelShiftDragFilter);
+            InitializeNativeModeSpecificLocationGuard();
+        }
+
+        private void InitializeNativeModeSpecificLocationGuard()
+        {
+            Control seed = null;
+
+            foreach (string name in _nativeModeSpecificPanelNames)
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                if (panel == null) continue;
+
+                if (seed == null) seed = panel;
+                panel.VisibleChanged -= NativeModeSpecificPanel_VisibleChanged;
+                panel.VisibleChanged += NativeModeSpecificPanel_VisibleChanged;
+            }
+
+            if (seed != null && !_nativeModeSpecificSharedLocation.HasValue)
+                _nativeModeSpecificSharedLocation = seed.Location;
+        }
+
+        private static bool IsNativeModeSpecificPanelName(string name)
+        {
+            return Array.IndexOf(_nativeModeSpecificPanelNames, name) >= 0;
+        }
+
+        private void NativeModeSpecificPanel_VisibleChanged(object sender, EventArgs e)
+        {
+            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
+                return;
+
+            Control panel = sender as Control;
+            if (panel == null || !panel.Visible || IsDisposed || Disposing)
+                return;
+
+            // Native mode switching can re-apply the designer Location while changing
+            // which mode-specific panel is visible. Re-assert the operator-selected
+            // shared position after that layout pass has completed.
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (!IsDisposed && !Disposing)
+                    ApplyNativeModeSpecificSharedLocation();
+            });
+        }
+
+        private void ApplyNativeModeSpecificSharedLocation()
+        {
+            if (!_nativeModeSpecificSharedLocation.HasValue) return;
+
+            List<Control> panels = new List<Control>();
+            foreach (string name in _nativeModeSpecificPanelNames)
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                if (panel != null) panels.Add(panel);
+            }
+            if (panels.Count == 0) return;
+
+            Point requested = _nativeModeSpecificSharedLocation.Value;
+            int maxX = panels.Min(p => Math.Max(0, ClientSize.Width - p.Width));
+            int maxY = panels.Min(p => Math.Max(0, ClientSize.Height - p.Height));
+            Point target = new Point(
+                Math.Max(0, Math.Min(maxX, requested.X)),
+                Math.Max(0, Math.Min(maxY, requested.Y)));
+
+            _nativeModeSpecificSharedLocation = target;
+            _nativeApplyingModeSpecificLocation = true;
+            try
+            {
+                foreach (Control panel in panels)
+                {
+                    if (panel.Location != target)
+                        panel.Location = target;
+                }
+            }
+            finally
+            {
+                _nativeApplyingModeSpecificLocation = false;
+            }
         }
 
         private const string NativePanelLocationKeyPrefix = "NativePanelLocation.";
@@ -182,8 +272,13 @@ namespace Thetis
 
                 if (panel == null) continue;
 
+                Point location = IsNativeModeSpecificPanelName(name) &&
+                                 _nativeModeSpecificSharedLocation.HasValue
+                    ? _nativeModeSpecificSharedLocation.Value
+                    : panel.Location;
+
                 state.Add(NativePanelLocationKeyPrefix + name + "/" +
-                    panel.Left.ToString() + "|" + panel.Top.ToString());
+                    location.X.ToString() + "|" + location.Y.ToString());
             }
         }
 
@@ -268,6 +363,25 @@ namespace Thetis
 
                 if (panel.Location != restored)
                     panel.Location = restored;
+            }
+
+            Point shared;
+            if (saved.TryGetValue("panelModeSpecificPhone", out shared))
+            {
+                _nativeModeSpecificSharedLocation = shared;
+                ApplyNativeModeSpecificSharedLocation();
+            }
+            else
+            {
+                foreach (string name in _nativeModeSpecificPanelNames)
+                {
+                    if (saved.TryGetValue(name, out shared))
+                    {
+                        _nativeModeSpecificSharedLocation = shared;
+                        ApplyNativeModeSpecificSharedLocation();
+                        break;
+                    }
+                }
             }
         }
 
@@ -387,9 +501,14 @@ namespace Thetis
             Point primaryOrigin = _nativePanelDragOrigins[_nativePanelDragPrimary];
             int newX = primaryOrigin.X + dx;
             int newY = primaryOrigin.Y + dy;
+            bool modeSpecificGroup = IsNativeModeSpecificPanelName(_nativePanelDragPrimary.Name);
 
-            int maxX = Math.Max(0, ClientSize.Width - _nativePanelDragPrimary.Width);
-            int maxY = Math.Max(0, ClientSize.Height - _nativePanelDragPrimary.Height);
+            int maxX = modeSpecificGroup
+                ? _nativePanelDragOrigins.Keys.Min(p => Math.Max(0, ClientSize.Width - p.Width))
+                : Math.Max(0, ClientSize.Width - _nativePanelDragPrimary.Width);
+            int maxY = modeSpecificGroup
+                ? _nativePanelDragOrigins.Keys.Min(p => Math.Max(0, ClientSize.Height - p.Height))
+                : Math.Max(0, ClientSize.Height - _nativePanelDragPrimary.Height);
 
             newX = Math.Max(0, Math.Min(maxX, newX));
             newY = Math.Max(0, Math.Min(maxY, newY));
@@ -399,8 +518,10 @@ namespace Thetis
 
             foreach (KeyValuePair<Control, Point> kvp in _nativePanelDragOrigins)
             {
-                Point origin = kvp.Value;
-                Point next = new Point(origin.X + appliedDx, origin.Y + appliedDy);
+                Point next = modeSpecificGroup
+                    ? new Point(newX, newY)
+                    : new Point(kvp.Value.X + appliedDx, kvp.Value.Y + appliedDy);
+
                 if (kvp.Key.Location != next)
                     kvp.Key.Location = next;
             }
@@ -413,6 +534,12 @@ namespace Thetis
         {
             if (_nativePanelDragPrimary == null)
                 return false;
+
+            if (IsNativeModeSpecificPanelName(_nativePanelDragPrimary.Name))
+            {
+                _nativeModeSpecificSharedLocation = _nativePanelDragPrimary.Location;
+                ApplyNativeModeSpecificSharedLocation();
+            }
 
             _nativePanelDragPrimary = null;
             _nativePanelDragOrigins = null;
