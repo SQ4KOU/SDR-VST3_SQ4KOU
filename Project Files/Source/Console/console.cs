@@ -40756,7 +40756,7 @@ namespace Thetis
             m_bLastVFOBTXsetting = chkVFOBTX.Checked; // MW0LGE_21k9d rc3
         }
 
-        private void toolStripMenuItemRX1FilterConfigure_Click(object sender, EventArgs e)
+        public void ShowRX1FilterConfiguration()
         {
             if (_rx1_dsp_mode == DSPMode.DRM || _rx1_dsp_mode == DSPMode.SPEC) return;
 
@@ -40767,6 +40767,11 @@ namespace Thetis
             filterRX1Form.CurrentFilter = rx1_filter;
             filterRX1Form.Show();
             filterRX1Form.Focus();
+        }
+
+        private void toolStripMenuItemRX1FilterConfigure_Click(object sender, EventArgs e)
+        {
+            ShowRX1FilterConfiguration();
         }
 
         private void toolStripMenuItemRX1FilterReset_Click(object sender, EventArgs e)
@@ -40816,7 +40821,7 @@ namespace Thetis
             }
         }
 
-        private void toolStripMenuItemRX2FilterConfigure_Click(object sender, EventArgs e)
+        public void ShowRX2FilterConfiguration()
         {
             if (_rx2_dsp_mode == DSPMode.DRM || _rx2_dsp_mode == DSPMode.SPEC) return;
 
@@ -40827,6 +40832,11 @@ namespace Thetis
             filterRX2Form.CurrentFilter = rx2_filter;
             filterRX2Form.Show();
             filterRX2Form.Focus();
+        }
+
+        private void toolStripMenuItemRX2FilterConfigure_Click(object sender, EventArgs e)
+        {
+            ShowRX2FilterConfiguration();
         }
 
         private void toolStripNotchDelete_Click(Object sender, EventArgs e)
