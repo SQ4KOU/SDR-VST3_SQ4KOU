@@ -338,24 +338,24 @@ namespace Thetis
 
 		public static void ControlList(Control c, ref List<Control> a)
 		{
-			if(c.Controls.Count > 0)
+			if (c.Controls.Count > 0)
 			{
                 foreach (Control c2 in c.Controls)
-                {
                     ControlList(c2, ref a);
-                }
 			}
 
-			if(c.GetType() == typeof(CheckBoxTS) || c.GetType() == typeof(CheckBoxTS) ||
-				c.GetType() == typeof(ComboBoxTS) || c.GetType() == typeof(ComboBox) ||
-				c.GetType() == typeof(NumericUpDownTS) || c.GetType() == typeof(NumericUpDown) ||
-				c.GetType() == typeof(RadioButtonTS) || c.GetType() == typeof(RadioButton) ||
-				c.GetType() == typeof(TextBoxTS) || c.GetType() == typeof(TextBox) ||
-				c.GetType() == typeof(TrackBarTS) || c.GetType() == typeof(TrackBar) ||
-				c.GetType() == typeof(ColorButton))
-				a.Add(c);
-
+            if (c is CheckBox ||
+                c is ComboBox ||
+                c is NumericUpDown ||
+                c is RadioButton ||
+                c is TextBox ||
+                c is TrackBar ||
+                c is ColorButton)
+            {
+                a.Add(c);
+            }
 		}
+
         public static void SaveForm(Form form, string tablename)
         {
             if (DB.ds == null) return;
@@ -365,45 +365,38 @@ namespace Thetis
 
             ControlList(form, ref temp);
 
+            // SQ4KOU persistence audit: generic form persistence must be symmetric
+            // for both TS-derived and ordinary WinForms controls.
+            Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (Control control in temp)
             {
-                switch (control)
+                if (control == null || string.IsNullOrEmpty(control.Name)) continue;
+
+                string value = null;
+                if (control is ColorButton color_button)
                 {
-                    case CheckBoxTS check_box:
-                        control_data.Add($"{check_box.Name}/{check_box.Checked}");
-                        break;
-                    case ComboBoxTS combo_box:
-                        control_data.Add($"{combo_box.Name}/{combo_box.Text}");
-                        break;
-                    case NumericUpDownTS numeric_up_down:
-                        control_data.Add($"{numeric_up_down.Name}/{numeric_up_down.Value}");
-                        break;
-                    case RadioButtonTS radio_button:
-                        control_data.Add($"{radio_button.Name}/{radio_button.Checked}");
-                        break;
-                    case TextBoxTS text_box:
-                        control_data.Add($"{text_box.Name}/{text_box.Text}");
-                        break;
-                    case TrackBarTS track_bar:
-                        control_data.Add($"{track_bar.Name}/{track_bar.Value}");
-                        break;
-                    case ColorButton color_button:
-                        Color clr = color_button.Color;
-                        control_data.Add($"{color_button.Name}/{clr.R}.{clr.G}.{clr.B}.{clr.A}");
-                        break;
-#if DEBUG
-                    case GroupBox gb:
-                    case CheckBox cb:
-                    case ComboBox cob:
-                    case NumericUpDown nu:
-                    case RadioButton rb:
-                    case TextBox tb:
-                    case TrackBar trk:
-                        Debug.WriteLine($"{form.Name} -> {control.Name} needs to be converted to a Thread Safe control.");
-                        break;
-#endif
+                    Color clr = color_button.Color;
+                    value = $"{clr.R}.{clr.G}.{clr.B}.{clr.A}";
                 }
+                else if (control is CheckBox check_box)
+                    value = check_box.Checked.ToString();
+                else if (control is ComboBox combo_box)
+                    value = combo_box.Text ?? string.Empty;
+                else if (control is NumericUpDown numeric_up_down)
+                    value = numeric_up_down.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                else if (control is RadioButton radio_button)
+                    value = radio_button.Checked.ToString();
+                else if (control is TextBox text_box)
+                    value = text_box.Text ?? string.Empty;
+                else if (control is TrackBar track_bar)
+                    value = track_bar.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                if (value != null)
+                    values[control.Name] = value;
             }
+
+            foreach (KeyValuePair<string, string> kvp in values)
+                control_data.Add($"{kvp.Key}/{kvp.Value}");
 
             control_data.Add($"Top/{form.Top}");
             control_data.Add($"Left/{form.Left}");
@@ -420,13 +413,12 @@ namespace Thetis
             List<Control> temp = new List<Control>();
             ControlList(form, ref temp);
 
-            Dictionary<string, Control> ctrls = new Dictionary<string, Control>();
+            Dictionary<string, Control> ctrls = new Dictionary<string, Control>(StringComparer.Ordinal);
             foreach (Control c in temp)
             {
-                ctrls.Add(c.Name, c);
+                if (c != null && !string.IsNullOrEmpty(c.Name))
+                    ctrls[c.Name] = c;
             }
-
-            temp.Clear();
 
             List<string> control_data = DB.GetVars(tablename).OfType<string>().ToList();
             control_data.Sort();
@@ -437,11 +429,15 @@ namespace Thetis
                 if (vals.Length < 2) continue;
 
                 string name = vals[0];
-                string val = vals[1];
+                string val = string.Join("/", vals.Skip(1));
 
                 if (name == "Top" || name == "Left" || name == "Width" || name == "Height")
                 {
-                    int parsed_value = int.Parse(val);
+                    if (!int.TryParse(val, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out int parsed_value) &&
+                        !int.TryParse(val, out parsed_value))
+                        continue;
+
                     switch (name)
                     {
                         case "Top":
@@ -464,43 +460,81 @@ namespace Thetis
 
                 if (!ctrls.TryGetValue(name, out Control control)) continue;
 
-                if (name.StartsWith("chk") && control is CheckBoxTS check_box)
+                try
                 {
-                    check_box.Checked = bool.Parse(val);
-                }
-                else if (name.StartsWith("combo") && control is ComboBoxTS combo_box)
-                {
-                    combo_box.Text = val;
-                }
-                else if (name.StartsWith("ud") && control is NumericUpDownTS numeric_up_down)
-                {
-                    decimal numeric_value = decimal.Parse(val);
-                    numeric_up_down.Value = Math.Max(numeric_up_down.Minimum, Math.Min(numeric_value, numeric_up_down.Maximum));
-                }
-                else if (name.StartsWith("rad") && control is RadioButtonTS radio_button)
-                {
-                    radio_button.Checked = bool.Parse(val);
-                }
-                else if (name.StartsWith("txt") && control is TextBoxTS text_box)
-                {
-                    text_box.Text = val;
-                }
-                else if (name.StartsWith("tb") && control is TrackBarTS track_bar)
-                {
-                    int track_bar_value = int.Parse(val);
-                    track_bar.Value = Math.Max(track_bar.Minimum, Math.Min(track_bar_value, track_bar.Maximum));
-                }
-                else if (name.StartsWith("clrbtn") && control is ColorButton color_button)
-                {
-                    string[] colors = val.Split('.');
-                    if (colors.Length == 4 &&
-                        int.TryParse(colors[0], out int R) &&
-                        int.TryParse(colors[1], out int G) &&
-                        int.TryParse(colors[2], out int B) &&
-                        int.TryParse(colors[3], out int A))
+                    if (control is ColorButton color_button)
                     {
-                        color_button.Color = Color.FromArgb(A, R, G, B);
+                        string[] colors = val.Split('.');
+                        if (colors.Length == 4 &&
+                            int.TryParse(colors[0], out int R) &&
+                            int.TryParse(colors[1], out int G) &&
+                            int.TryParse(colors[2], out int B) &&
+                            int.TryParse(colors[3], out int A))
+                        {
+                            color_button.Color = Color.FromArgb(
+                                Math.Max(0, Math.Min(255, A)),
+                                Math.Max(0, Math.Min(255, R)),
+                                Math.Max(0, Math.Min(255, G)),
+                                Math.Max(0, Math.Min(255, B)));
+                        }
                     }
+                    else if (control is CheckBox check_box)
+                    {
+                        if (bool.TryParse(val, out bool b)) check_box.Checked = b;
+                    }
+                    else if (control is ComboBox combo_box)
+                    {
+                        if (combo_box.DropDownStyle == ComboBoxStyle.DropDownList)
+                        {
+                            for (int i = 0; i < combo_box.Items.Count; i++)
+                            {
+                                if (string.Equals(combo_box.Items[i]?.ToString(), val, StringComparison.Ordinal))
+                                {
+                                    combo_box.SelectedIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            combo_box.Text = val;
+                        }
+                    }
+                    else if (control is NumericUpDown numeric_up_down)
+                    {
+                        decimal numeric_value;
+                        if (decimal.TryParse(val, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out numeric_value) ||
+                            decimal.TryParse(val, System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.CurrentCulture, out numeric_value))
+                        {
+                            numeric_up_down.Value = Math.Max(numeric_up_down.Minimum,
+                                Math.Min(numeric_value, numeric_up_down.Maximum));
+                        }
+                    }
+                    else if (control is RadioButton radio_button)
+                    {
+                        if (bool.TryParse(val, out bool b)) radio_button.Checked = b;
+                    }
+                    else if (control is TextBox text_box)
+                    {
+                        text_box.Text = val;
+                    }
+                    else if (control is TrackBar track_bar)
+                    {
+                        int track_bar_value;
+                        if (int.TryParse(val, System.Globalization.NumberStyles.Integer,
+                                System.Globalization.CultureInfo.InvariantCulture, out track_bar_value) ||
+                            int.TryParse(val, out track_bar_value))
+                        {
+                            track_bar.Value = Math.Max(track_bar.Minimum,
+                                Math.Min(track_bar_value, track_bar.Maximum));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{form.Name} restore failed for {name}: {ex.Message}");
                 }
             }
 
