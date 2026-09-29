@@ -245,8 +245,53 @@ namespace Thetis
             if (chkVAC2ApplyRxVst != null)
                 chkVAC2ApplyRxVst.Enabled = !chkVAC2DirectIQ.Checked;
         }
+        private void InitializeFilterPresetSetupTab()
+        {
+            if (tcDSP == null) return;
+            foreach (TabPage page in tcDSP.TabPages)
+                if (page.Name == "tpDSPFilterPresets") return;
+
+            TabPage pageFilters = new TabPage();
+            pageFilters.Name = "tpDSPFilterPresets";
+            pageFilters.Text = "Filter Presets";
+            pageFilters.BackColor = SystemColors.Control;
+
+            GroupBox grp = new GroupBox();
+            grp.Text = "RX Filter Presets";
+            grp.Location = new Point(16, 16);
+            grp.Size = new Size(360, 132);
+
+            Label info = new Label();
+            info.AutoSize = false;
+            info.Location = new Point(16, 24);
+            info.Size = new Size(326, 38);
+            info.Text = "Configure the same F1-F10, VAR1 and VAR2 presets used by the main-console filter controls.";
+
+            Button btnRX1Filters = new Button();
+            btnRX1Filters.Name = "btnSetupRX1FilterPresets";
+            btnRX1Filters.Text = "RX1 Filter Presets...";
+            btnRX1Filters.Location = new Point(16, 76);
+            btnRX1Filters.Size = new Size(150, 30);
+            btnRX1Filters.Click += delegate { console.ShowRX1FilterConfiguration(); };
+
+            Button btnRX2Filters = new Button();
+            btnRX2Filters.Name = "btnSetupRX2FilterPresets";
+            btnRX2Filters.Text = "RX2 Filter Presets...";
+            btnRX2Filters.Location = new Point(188, 76);
+            btnRX2Filters.Size = new Size(150, 30);
+            btnRX2Filters.Click += delegate { console.ShowRX2FilterConfiguration(); };
+
+            grp.Controls.Add(info);
+            grp.Controls.Add(btnRX1Filters);
+            grp.Controls.Add(btnRX2Filters);
+            pageFilters.Controls.Add(grp);
+            tcDSP.TabPages.Add(pageFilters);
+        }
+
         internal void AfterConstructor()
         {
+            InitializeFilterPresetSetupTab();
+
             LogTool.AddLogEntry("      Setup setup controls...", "SETUP_CONT");
             Splash.SetStatus("Setting up controls");
 
