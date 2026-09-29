@@ -1466,7 +1466,8 @@ namespace Thetis
                 t == typeof(TrackBarTS) || t == typeof(TrackBar) ||
                 t == typeof(ColorButton) || t == typeof(ucLGPicker) || t == typeof(ucGradientDefault))
             {
-                a.Add(c.Name, c);
+                if (!string.IsNullOrEmpty(c.Name))
+                    a[c.Name] = c;
             }
         }
 
@@ -1701,22 +1702,22 @@ namespace Thetis
 
                 c.Click += new System.EventHandler(everyControlClickHandler);
 
-                if (c.GetType() == typeof(CheckBoxTS))
-                    ((CheckBoxTS)c).CheckedChanged += new System.EventHandler(checkBoxCheckedChangeHandler);
-                else if (c.GetType() == typeof(ComboBoxTS))
-                    ((ComboBoxTS)c).SelectedIndexChanged += new System.EventHandler(comboboxSelectedIndexChangeHandler);
-                else if (c.GetType() == typeof(NumericUpDownTS))
-                    ((NumericUpDownTS)c).ValueChanged += new System.EventHandler(numericUDValueChangeHandler);
-                else if (c.GetType() == typeof(RadioButtonTS))
-                    ((RadioButtonTS)c).CheckedChanged += new System.EventHandler(radioButtonCheckedChangeHandler);
-                else if (c.GetType() == typeof(TextBoxTS))
-                    ((TextBoxTS)c).TextChanged += new System.EventHandler(textBoxTextChangeHandler);
-                else if (c.GetType() == typeof(TrackBarTS))
-                    ((TrackBarTS)c).ValueChanged += new System.EventHandler(trackBarValueChangeHandler);
-                else if (c.GetType() == typeof(ColorButton))
-                    ((ColorButton)c).Changed += new System.EventHandler(colourButtonChangeHandler);
-                else if (c.GetType() == typeof(ucLGPicker))
-                    ((ucLGPicker)c).Changed += new System.EventHandler(lgPickerChangeHandler);
+                if (c is ColorButton colorButton)
+                    colorButton.Changed += new System.EventHandler(colourButtonChangeHandler);
+                else if (c is CheckBox checkBox)
+                    checkBox.CheckedChanged += new System.EventHandler(checkBoxCheckedChangeHandler);
+                else if (c is ComboBox comboBox)
+                    comboBox.SelectedIndexChanged += new System.EventHandler(comboboxSelectedIndexChangeHandler);
+                else if (c is NumericUpDown numeric)
+                    numeric.ValueChanged += new System.EventHandler(numericUDValueChangeHandler);
+                else if (c is RadioButton radio)
+                    radio.CheckedChanged += new System.EventHandler(radioButtonCheckedChangeHandler);
+                else if (c is TextBox textBox)
+                    textBox.TextChanged += new System.EventHandler(textBoxTextChangeHandler);
+                else if (c is TrackBar trackBar)
+                    trackBar.ValueChanged += new System.EventHandler(trackBarValueChangeHandler);
+                else if (c is ucLGPicker lgPicker)
+                    lgPicker.Changed += new System.EventHandler(lgPickerChangeHandler);
             }
         }
         //-
@@ -1747,36 +1748,12 @@ namespace Thetis
 
             foreach (string sKey in sortedList)
             {
-                Control c = controls[sKey];
-
-                if (c.GetType() == typeof(CheckBoxTS))
-                    a.Add(c.Name, ((CheckBoxTS)c).Checked.ToString());
-                else if (c.GetType() == typeof(ComboBoxTS))
-                {
-                    a.Add(c.Name, ((ComboBoxTS)c).Text);
-                }
-                else if (c.GetType() == typeof(NumericUpDownTS))
-                    a.Add(c.Name, ((NumericUpDownTS)c).Value.ToString());
-                else if (c.GetType() == typeof(RadioButtonTS))
-                    a.Add(c.Name, ((RadioButtonTS)c).Checked.ToString());
-                else if (c.GetType() == typeof(TextBoxTS))
-                    a.Add(c.Name, ((TextBoxTS)c).Text);
-                else if (c.GetType() == typeof(TrackBarTS))
-                    a.Add(c.Name, ((TrackBarTS)c).Value.ToString());
-                else if (c.GetType() == typeof(ColorButton))
-                {
-                    Color clr = ((ColorButton)c).Color;
-                    a.Add(c.Name, clr.R + "." + clr.G + "." + clr.B + "." + clr.A);
-                }
+                Control control = controls[sKey];
+                if (TrySerializeSetupControl(control, out string persistedValue))
+                    a[sKey] = persistedValue;
 #if(DEBUG)
-                else if (c.GetType() == typeof(GroupBox) ||
-                    c.GetType() == typeof(CheckBox) ||
-                    c.GetType() == typeof(ComboBox) ||
-                    c.GetType() == typeof(NumericUpDown) ||
-                    c.GetType() == typeof(RadioButton) ||
-                    c.GetType() == typeof(TextBox) ||
-                    c.GetType() == typeof(TrackBar))
-                    Debug.WriteLine(this.Name + " -> " + c.Name + " needs to be converted to a Thread Safe control.");
+                else
+                    Debug.WriteLine(this.Name + " -> " + control.Name + " has no Setup persistence codec.");
 #endif
             }
 
@@ -1936,6 +1913,192 @@ namespace Thetis
                 return HPSDRModel.FIRST;
         }
         private bool _gettingOptions = false;
+
+        // Centralized Setup persistence codec. Use base WinForms types so both
+        // Thread-Safe controls and ordinary controls are handled symmetrically.
+        private static bool TrySerializeSetupControl(Control control, out string value)
+        {
+            value = null;
+            if (control == null) return false;
+
+            if (control is ColorButton colorButton)
+            {
+                Color clr = colorButton.Color;
+                value = clr.R + "." + clr.G + "." + clr.B + "." + clr.A;
+                return true;
+            }
+            if (control is CheckBox checkBox)
+            {
+                value = checkBox.Checked.ToString();
+                return true;
+            }
+            if (control is ComboBox comboBox)
+            {
+                value = comboBox.Text ?? string.Empty;
+                return true;
+            }
+            if (control is NumericUpDown numeric)
+            {
+                value = numeric.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (control is RadioButton radio)
+            {
+                value = radio.Checked.ToString();
+                return true;
+            }
+            if (control is TextBox textBox)
+            {
+                value = textBox.Text ?? string.Empty;
+                return true;
+            }
+            if (control is TrackBar trackBar)
+            {
+                value = trackBar.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (control is ucLGPicker lgPicker)
+            {
+                value = lgPicker.Text ?? string.Empty;
+                return true;
+            }
+            if (control is ucGradientDefault gradientDefault)
+            {
+                value = gradientDefault.Text ?? string.Empty;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParsePersistedDecimal(string value, out decimal parsed)
+        {
+            return decimal.TryParse(value, System.Globalization.NumberStyles.Any,
+                       System.Globalization.CultureInfo.InvariantCulture, out parsed)
+                || decimal.TryParse(value, System.Globalization.NumberStyles.Any,
+                       System.Globalization.CultureInfo.CurrentCulture, out parsed);
+        }
+
+        private static bool TryParsePersistedInt(string value, out int parsed)
+        {
+            return int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.InvariantCulture, out parsed)
+                || int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.CurrentCulture, out parsed);
+        }
+
+        private bool TryRestoreSetupControl(Control control, string value, string name)
+        {
+            if (control == null) return false;
+
+            try
+            {
+                if (control is ColorButton colorButton)
+                {
+                    string[] colors = (value ?? string.Empty).Split('.');
+                    if (colors.Length != 4) return false;
+                    if (!int.TryParse(colors[0], out int r) ||
+                        !int.TryParse(colors[1], out int g) ||
+                        !int.TryParse(colors[2], out int b) ||
+                        !int.TryParse(colors[3], out int a)) return false;
+                    colorButton.Color = Color.FromArgb(
+                        Math.Max(0, Math.Min(255, a)),
+                        Math.Max(0, Math.Min(255, r)),
+                        Math.Max(0, Math.Min(255, g)),
+                        Math.Max(0, Math.Min(255, b)));
+                    colorButton.Automatic = "";
+                    return true;
+                }
+
+                if (control is CheckBox checkBox)
+                {
+                    if (!bool.TryParse(value, out bool b)) return false;
+                    checkBox.Checked = b;
+                    return true;
+                }
+
+                if (control is ComboBox comboBox)
+                {
+                    int found = -1;
+                    for (int i = 0; i < comboBox.Items.Count; i++)
+                    {
+                        object item = comboBox.Items[i];
+                        if (string.Equals(item?.ToString(), value, StringComparison.Ordinal))
+                        {
+                            found = i;
+                            break;
+                        }
+                    }
+
+                    if (found >= 0)
+                    {
+                        comboBox.SelectedIndex = found;
+                        return true;
+                    }
+
+                    if (comboBox.DropDownStyle != ComboBoxStyle.DropDownList)
+                    {
+                        comboBox.Text = value ?? string.Empty;
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                if (control is NumericUpDown numeric)
+                {
+                    if (!TryParsePersistedDecimal(value, out decimal number)) return false;
+                    if (number > numeric.Maximum) number = numeric.Maximum;
+                    if (number < numeric.Minimum) number = numeric.Minimum;
+                    numeric.Value = number;
+                    return true;
+                }
+
+                if (control is RadioButton radio)
+                {
+                    if (!bool.TryParse(value, out bool b)) return false;
+                    radio.Checked = b;
+                    return true;
+                }
+
+                if (control is TextBox textBox)
+                {
+                    textBox.Text = value ?? string.Empty;
+                    return true;
+                }
+
+                if (control is TrackBar trackBar)
+                {
+                    if (!TryParsePersistedInt(value, out int number)) return false;
+                    if (number < trackBar.Minimum) number = trackBar.Minimum;
+                    if (number > trackBar.Maximum) number = trackBar.Maximum;
+                    trackBar.Value = number;
+                    return true;
+                }
+
+                if (control is ucLGPicker lgPicker)
+                {
+                    lgPicker.Text = value ?? string.Empty;
+                    if (name == "lgLinearGradient_waterfall" || name == "lgLinearGradientTX_waterfall")
+                        lgPicker.ApplyGlobalAlpha(255);
+                    return true;
+                }
+
+                if (control is ucGradientDefault gradientDefault)
+                {
+                    gradientDefault.Text = value ?? string.Empty;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Setup restore failed for " + name + ": " + ex.Message);
+                return false;
+            }
+
+            return false;
+        }
+
         private void getOptions(List<string> recoveryList = null)
         {
             _gettingOptions = true;
@@ -1958,12 +2121,16 @@ namespace Thetis
             List<string> sortedList = a.Keys.ToList();
             sortedList.Sort();
 
-            //[2.10.3.12]MW0LGE this is bad, because many radios have tabs removed, alex-2 for example, and in those cases
-            //those controls will never be saved to the database, so when we recover, the count will be less than the number of controls as
-            //this is checked before tabs are removed. A complete recovery is then done, which resets everything to default every
-            //single time. TODO !!!!
-            if (a.Count < controls.Count)		// some control values are not in the database
-            {								    // so set all of them to the defaults
+            // SQ4KOU persistence audit:
+            // Never infer "database incomplete" from Options.Count < controls.Count.
+            // The Setup tree intentionally contains ignored controls, model-dependent
+            // controls, runtime controls and controls with independent persistence.
+            // Comparing the two counts caused a global default reset whenever the UI
+            // gained a control or a radio-specific tab was absent.
+            //
+            // Only a genuinely empty Options table is treated as a fresh database.
+            if (a.Count == 0)
+            {
                 InitGeneralTab(recoveryList);
                 InitAudioTab(recoveryList);
                 InitAdvancedAudioTab(recoveryList);
@@ -2038,89 +2205,8 @@ namespace Thetis
                     if (controls.ContainsKey(name))
                     {
                         Control cc = controls[name];
-
-                        if (cc.GetType() == typeof(CheckBoxTS))          // the control is a CheckBoxTS
-                        {
-                            CheckBoxTS c = (CheckBoxTS)cc;
-                            c.Checked = bool.Parse(val);
-                        }
-                        else if (cc.GetType() == typeof(ComboBoxTS))     // the control is a ComboBoxTS
-                        {
-                            ComboBoxTS c = (ComboBoxTS)cc;
-                            if (c.Items.Count > 0 && c.Items[0].GetType() == typeof(string))
-                            {
-                                c.Text = val;
-                            }
-                            else
-                            {
-                                foreach (object o in c.Items)
-                                {
-                                    if (o.ToString() == val)
-                                        c.Text = val;   // restore value
-                                }
-                            }
-                        }
-                        else if (cc.GetType() == typeof(NumericUpDownTS))    // the control is a NumericUpDownTS
-                        {
-                            NumericUpDownTS c = (NumericUpDownTS)cc;
-                            decimal num = decimal.Parse(val);
-
-                            if (num > c.Maximum) num = c.Maximum;       // check endpoints
-                            else if (num < c.Minimum) num = c.Minimum;
-                            c.Value = num;          // restore value
-                        }
-                        else if (cc.GetType() == typeof(RadioButtonTS))  // the control is a RadioButtonTS
-                        {
-                            RadioButtonTS c = (RadioButtonTS)cc;
-                            c.Checked = bool.Parse(val);    // restore value
-                        }
-                        else if (cc.GetType() == typeof(TextBoxTS))      // the control is a TextBox
-                        {
-                            TextBoxTS c = (TextBoxTS)cc;
-                            c.Text = val;   // restore value
-                        }
-                        else if (cc.GetType() == typeof(TrackBarTS))     // the control is a TrackBar (slider)
-                        {
-                            TrackBarTS c = (TrackBarTS)cc;
-                            int value = Int32.Parse(val);
-                            if (value < c.Minimum) value = c.Minimum;
-                            if (value > c.Maximum) value = c.Maximum;
-                            c.Value = value;
-                        }
-                        else if (cc.GetType() == typeof(ColorButton))
-                        {
-                            string[] colors = val.Split('.');
-                            if (colors.Length == 4)
-                            {
-                                int R, G, B, A;
-                                R = Int32.Parse(colors[0]);
-                                G = Int32.Parse(colors[1]);
-                                B = Int32.Parse(colors[2]);
-                                A = Int32.Parse(colors[3]);
-
-                                ColorButton c = (ColorButton)cc;
-                                c.Color = Color.FromArgb(A, R, G, B);
-                                c.Automatic = "";
-                            }
-                        }
-                        else if (name == "lgLinearGradientRX1")
-                        {
-                            lgLinearGradientRX1.Text = val;
-                        }
-                        else if (name == "lgLinearGradient_waterfall")
-                        {
-                            lgLinearGradient_waterfall.Text = val;
-                            lgLinearGradient_waterfall.ApplyGlobalAlpha(255);
-                        }
-                        else if (name == "lgLinearGradientTX")
-                        {
-                            lgLinearGradientTX.Text = val;
-                        }
-                        else if (name == "lgLinearGradientTX_waterfall")
-                        {
-                            lgLinearGradientTX_waterfall.Text = val;
-                            lgLinearGradientTX_waterfall.ApplyGlobalAlpha(255);
-                        }
+                        if (!TryRestoreSetupControl(cc, val, name))
+                            Debug.WriteLine("Setup option not restored: " + name + " = " + val);
                     }
                     else if (name == "UsbBCDSerialNumber") // [2.10.3.5]MW0LGE recover this as the usbbcd combo box will not have any entries at this point
                     {
