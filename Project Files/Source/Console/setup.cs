@@ -728,14 +728,6 @@ namespace Thetis
             LogTool.AddLogEntry("        Setup applying settings...", "FORCEALL");
             ForceAllEvents();
 
-            // SQ4KOU: the Setup checkboxes are the authoritative persisted RADE state.
-            // ForceAllEvents invokes the normal handlers, but ChannelMaster is native
-            // process state and can survive earlier initialization paths with stale
-            // enable flags.  Re-assert the restored UI state once, after all startup
-            // handlers have run, so an unchecked RADE control can never leave the
-            // decoder/encoder active after restart.
-            SyncRadaeRuntimeFromControls();
-
             //model known, update anything that might have been initialsed without this being known
             if (console.psform != null) console.psform.UpdateWarningSetPk();
 
@@ -3822,8 +3814,9 @@ namespace Thetis
 
                 if (DB.ConvertFromDBVal<string>(dr["CFCParaEQData"]) != CFCConfigForm.ConfigData) return true;
 
-                // RADE DSP settings.  The ON/OFF state is owned exclusively
-                // by Setup -> DSP -> RADE and is deliberately NOT TX-profile-owned.
+                // RADE DSP settings
+                if (DB.ConvertFromDBVal<bool>(dr["RADE_Enabled"]) != chkRADAE.Checked) return true;
+                if (DB.ConvertFromDBVal<bool>(dr["RADE_EnabledRX2"]) != chkRADAERX2.Checked) return true;
                 if (DB.ConvertFromDBVal<int>(dr["RADE_VersionRX1"]) != cmbRX1RADEVersion.SelectedIndex) return true;
                 if (DB.ConvertFromDBVal<int>(dr["RADE_VersionRX2"]) != cmbRX2RADEVersion.SelectedIndex) return true;
                 if (DB.ConvertFromDBVal<decimal>(dr["RADE_MicLevel"]) != udRadaeMicLevel.Value) return true;
@@ -4237,9 +4230,9 @@ namespace Thetis
 
             dr["CFCParaEQData"] = CFCConfigForm.ConfigData;
 
-            // RADE DSP settings.  Keep legacy RADE_Enabled columns in the
-            // schema for compatibility, but never overwrite them from a TX
-            // profile save; enable state belongs only to Setup Options.
+            // RADE DSP settings
+            dr["RADE_Enabled"] = chkRADAE.Checked;
+            dr["RADE_EnabledRX2"] = chkRADAERX2.Checked;
             dr["RADE_VersionRX1"] = cmbRX1RADEVersion.SelectedIndex;
             dr["RADE_VersionRX2"] = cmbRX2RADEVersion.SelectedIndex;
             dr["RADE_MicLevel"] = udRadaeMicLevel.Value;
@@ -10044,9 +10037,18 @@ namespace Thetis
             CFCCOMPEQ = cfceq;
             CFCConfigForm.ConfigData = (string)dr["CFCParaEQData"];
 
-            // RADE DSP settings.  Do NOT touch chkRADAE/chkRADAERX2 here:
-            // TX-profile recall may restore RADE parameters, but never its
-            // master ON/OFF state.  Setup Options is the sole authority.
+            // RADE DSP settings.  While the fldigi sidecar is running RADE
+            // must stay off, so a TX profile whose stored RADE bits are on is
+            // loaded RADE-cleared (and the in-memory row patched so the
+            // changed-check stays consistent -- the RADE kill the other way
+            // happens in chkRADAE_CheckedChanged if RADE is toggled manually).
+            if (Thetis.FLDIGI.FldigiManager.Enabled)
+            {
+                dr["RADE_Enabled"] = false;
+                dr["RADE_EnabledRX2"] = false;
+            }
+            chkRADAE.Checked = DB.ConvertFromDBVal<bool>(dr["RADE_Enabled"]);
+            chkRADAERX2.Checked = DB.ConvertFromDBVal<bool>(dr["RADE_EnabledRX2"]);
             cmbRX1RADEVersion.SelectedIndex = Math.Min(Math.Max(DB.ConvertFromDBVal<int>(dr["RADE_VersionRX1"]), 0), Math.Max(cmbRX1RADEVersion.Items.Count - 1, 0));
             cmbRX2RADEVersion.SelectedIndex = Math.Min(Math.Max(DB.ConvertFromDBVal<int>(dr["RADE_VersionRX2"]), 0), Math.Max(cmbRX2RADEVersion.Items.Count - 1, 0));
             udRadaeMicLevel.Value = Math.Min(Math.Max(DB.ConvertFromDBVal<decimal>(dr["RADE_MicLevel"]), udRadaeMicLevel.Minimum), udRadaeMicLevel.Maximum);
@@ -34102,39 +34104,6 @@ namespace Thetis
 
         #region RADE (FreeDV/RADEV1 digital voice) - full Setup tab UI
 
-        private void SyncRadaeRuntimeFromControls()
-        {
-            try
-            {
-                int rx1 = chkRADAE != null && chkRADAE.Checked ? 1 : 0;
-                int rx2 = chkRADAERX2 != null && chkRADAERX2.Checked ? 1 : 0;
-
-                cmaster.SetRadaeRxEnabled(0, rx1);
-                cmaster.SetRadaeRxEnabled(1, rx2);
-                cmaster.SetRadaeTxEnabled((rx1 != 0 || rx2 != 0) ? 1 : 0);
-
-                // Loopback is independent from the RX enable flags and is also
-                // native runtime state. Keep it exactly aligned with its checkbox.
-                int loopback = chkRADAELoopback != null && chkRADAELoopback.Checked ? 1 : 0;
-                cmaster.SetRadaeLoopbackEnabled(0, loopback);
-
-                // Keep the front-console mirror aligned with the persisted owner.
-                if (console != null && console.chkRADEMirror != null &&
-                    console.chkRADEMirror.Checked != (rx1 != 0))
-                    console.chkRADEMirror.Checked = rx1 != 0;
-
-                if (console != null)
-                {
-                    console.NotifyRadaeEnabledChanged(1, rx1 != 0);
-                    console.NotifyRadaeEnabledChanged(2, rx2 != 0);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("RADE startup state sync failed: " + ex.Message);
-            }
-        }
-
         private void chkRADAE_CheckedChanged(object sender, EventArgs e)
         {
             int active = chkRADAE.Checked ? 1 : 0;
@@ -34432,13 +34401,15 @@ namespace Thetis
                 && char.IsLetter(s[5]) && char.IsLower(s[5]);
         }
 
-        // RADE master enable is owned exclusively by the Setup checkboxes.
-        // The setter remains only for source compatibility with older callers;
-        // external writes are intentionally ignored.
+        // Public accessors used by the console-side mirrors so the master
+        // state remains a single source of truth on the Setup checkboxes.
+        // Setters are idempotent: assigning the same value is a WinForms
+        // no-op (CheckedChanged fires only on real state change), so
+        // cross-mirror writes can't recurse.
         public bool RADAE
         {
             get { return chkRADAE.Checked; }
-            set { /* Setup is authoritative: external writes are ignored. */ }
+            set { if (chkRADAE.Checked != value) chkRADAE.Checked = value; }
         }
         public bool RADAEReporter
         {
@@ -34503,7 +34474,7 @@ namespace Thetis
         public bool RADAERX2
         {
             get { return chkRADAERX2.Checked; }
-            set { /* Setup is authoritative: external writes are ignored. */ }
+            set { if (chkRADAERX2.Checked != value) chkRADAERX2.Checked = value; }
         }
         public bool RADAEReportingRX2
         {
