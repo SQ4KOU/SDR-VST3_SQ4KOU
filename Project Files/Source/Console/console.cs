@@ -38319,6 +38319,12 @@ namespace Thetis
 
             bool oldRX2Enabled = _old_rx2_checked;// RX2Enabled;
 
+            // RX2 enable/disable runs the native layout engine, which reassigns
+            // locations of the built-in BAND/MODE/FILTER/VFO/etc. panels. Preserve
+            // the user's Shift-moved coordinates across that transient relayout.
+            Dictionary<string, Point> nativePanelLocationsBeforeRx2Toggle =
+                oldRX2Enabled != chkRX2.Checked ? CapturePersistedNativePanelLocations() : null;
+
             if (oldRX2Enabled != chkRX2.Checked) RX2EnabledPreChangedHandlers?.Invoke(chkRX2.Checked);
 
             RX2Enabled = chkRX2.Checked;
@@ -38408,6 +38414,10 @@ namespace Thetis
             UpdateRX2DisplayClusterVisibility();
             if (collapsedDisplay) RepositionControlsForCollapsedlDisplay();
             else PositionRX2DisplayClusterLegacy();
+
+            // The relayout above may reposition RX2-owned panels, but it must
+            // not destroy custom positions of the persistent native panels.
+            RestoreCapturedNativePanelLocations(nativePanelLocationsBeforeRx2Toggle);
 
             // need to update anything on the info bar buttons that is relying on rx2
             SetupInfoBarButton(ucInfoBar.ActionTypes.ActivePeaks, Display.SpectralPeakHoldRX1 || (RX2Enabled && Display.SpectralPeakHoldRX2));
