@@ -12637,6 +12637,45 @@ namespace Thetis
 
         private void comboColorPalette_SelectedIndexChanged(object sender, EventArgs e)
         {
+            // SQ4KOU: native 256-entry waterfall palettes. These are distinct
+            // ColorScheme values backed by WaterfallPalette LUTs; do not alias
+            // Enhanced256/Grayscale256 to the legacy Enhanced/BLACKWHITE paths.
+            if (comboColorPalette.Text == "Console 256")
+            {
+                console.RX1ColourScheme = ColorScheme.Console;
+                clrbtnWaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette.Text == "Thermal 256")
+            {
+                console.RX1ColourScheme = ColorScheme.Thermal;
+                clrbtnWaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette.Text == "DeepBlue 256")
+            {
+                console.RX1ColourScheme = ColorScheme.DeepBlue;
+                clrbtnWaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette.Text == "Enhanced 256")
+            {
+                console.RX1ColourScheme = ColorScheme.Enhanced256;
+                clrbtnWaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette.Text == "BlackWhite 256")
+            {
+                console.RX1ColourScheme = ColorScheme.Grayscale256;
+                clrbtnWaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+
             showHideWaterfallControls(1, true);
 
             if (comboColorPalette.Text == "original")
@@ -12704,6 +12743,45 @@ namespace Thetis
 
         private void comboRX2ColorPalette_SelectedIndexChanged(object sender, EventArgs e)
         {
+            // SQ4KOU: native 256-entry waterfall palettes. These are distinct
+            // ColorScheme values backed by WaterfallPalette LUTs; do not alias
+            // Enhanced256/Grayscale256 to the legacy Enhanced/BLACKWHITE paths.
+            if (comboRX2ColorPalette.Text == "Console 256")
+            {
+                console.RX2ColourScheme = ColorScheme.Console;
+                clrbtnRX2WaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboRX2ColorPalette.Text == "Thermal 256")
+            {
+                console.RX2ColourScheme = ColorScheme.Thermal;
+                clrbtnRX2WaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboRX2ColorPalette.Text == "DeepBlue 256")
+            {
+                console.RX2ColourScheme = ColorScheme.DeepBlue;
+                clrbtnRX2WaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboRX2ColorPalette.Text == "Enhanced 256")
+            {
+                console.RX2ColourScheme = ColorScheme.Enhanced256;
+                clrbtnRX2WaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboRX2ColorPalette.Text == "BlackWhite 256")
+            {
+                console.RX2ColourScheme = ColorScheme.Grayscale256;
+                clrbtnRX2WaterfallLow.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+
             showHideWaterfallControls(2, true);
 
             if (comboRX2ColorPalette.Text == "original")
@@ -35815,6 +35893,45 @@ namespace Thetis
 
         private void comboColorPalette_tx_SelectedIndexChanged(object sender, EventArgs e)
         {
+            // SQ4KOU: native 256-entry waterfall palettes. These are distinct
+            // ColorScheme values backed by WaterfallPalette LUTs; do not alias
+            // Enhanced256/Grayscale256 to the legacy Enhanced/BLACKWHITE paths.
+            if (comboColorPalette_tx.Text == "Console 256")
+            {
+                console.TXColourScheme = ColorScheme.Console;
+                clrbtnWaterfallLow_tx.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette_tx.Text == "Thermal 256")
+            {
+                console.TXColourScheme = ColorScheme.Thermal;
+                clrbtnWaterfallLow_tx.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette_tx.Text == "DeepBlue 256")
+            {
+                console.TXColourScheme = ColorScheme.DeepBlue;
+                clrbtnWaterfallLow_tx.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette_tx.Text == "Enhanced 256")
+            {
+                console.TXColourScheme = ColorScheme.Enhanced256;
+                clrbtnWaterfallLow_tx.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+            else if (comboColorPalette_tx.Text == "BlackWhite 256")
+            {
+                console.TXColourScheme = ColorScheme.Grayscale256;
+                clrbtnWaterfallLow_tx.Visible = false;
+                Display.PersistNativeGPUWaterfallSettings();
+                return;
+            }
+
             if (comboColorPalette_tx.Text == "original")
             {
                 console.TXColourScheme = ColorScheme.original;
