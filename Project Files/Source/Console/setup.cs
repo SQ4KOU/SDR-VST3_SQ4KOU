@@ -3822,9 +3822,8 @@ namespace Thetis
 
                 if (DB.ConvertFromDBVal<string>(dr["CFCParaEQData"]) != CFCConfigForm.ConfigData) return true;
 
-                // RADE DSP settings
-                if (DB.ConvertFromDBVal<bool>(dr["RADE_Enabled"]) != chkRADAE.Checked) return true;
-                if (DB.ConvertFromDBVal<bool>(dr["RADE_EnabledRX2"]) != chkRADAERX2.Checked) return true;
+                // RADE DSP settings.  The ON/OFF state is owned exclusively
+                // by Setup -> DSP -> RADE and is deliberately NOT TX-profile-owned.
                 if (DB.ConvertFromDBVal<int>(dr["RADE_VersionRX1"]) != cmbRX1RADEVersion.SelectedIndex) return true;
                 if (DB.ConvertFromDBVal<int>(dr["RADE_VersionRX2"]) != cmbRX2RADEVersion.SelectedIndex) return true;
                 if (DB.ConvertFromDBVal<decimal>(dr["RADE_MicLevel"]) != udRadaeMicLevel.Value) return true;
@@ -4238,9 +4237,9 @@ namespace Thetis
 
             dr["CFCParaEQData"] = CFCConfigForm.ConfigData;
 
-            // RADE DSP settings
-            dr["RADE_Enabled"] = chkRADAE.Checked;
-            dr["RADE_EnabledRX2"] = chkRADAERX2.Checked;
+            // RADE DSP settings.  Keep legacy RADE_Enabled columns in the
+            // schema for compatibility, but never overwrite them from a TX
+            // profile save; enable state belongs only to Setup Options.
             dr["RADE_VersionRX1"] = cmbRX1RADEVersion.SelectedIndex;
             dr["RADE_VersionRX2"] = cmbRX2RADEVersion.SelectedIndex;
             dr["RADE_MicLevel"] = udRadaeMicLevel.Value;
@@ -10045,18 +10044,9 @@ namespace Thetis
             CFCCOMPEQ = cfceq;
             CFCConfigForm.ConfigData = (string)dr["CFCParaEQData"];
 
-            // RADE DSP settings.  While the fldigi sidecar is running RADE
-            // must stay off, so a TX profile whose stored RADE bits are on is
-            // loaded RADE-cleared (and the in-memory row patched so the
-            // changed-check stays consistent -- the RADE kill the other way
-            // happens in chkRADAE_CheckedChanged if RADE is toggled manually).
-            if (Thetis.FLDIGI.FldigiManager.Enabled)
-            {
-                dr["RADE_Enabled"] = false;
-                dr["RADE_EnabledRX2"] = false;
-            }
-            chkRADAE.Checked = DB.ConvertFromDBVal<bool>(dr["RADE_Enabled"]);
-            chkRADAERX2.Checked = DB.ConvertFromDBVal<bool>(dr["RADE_EnabledRX2"]);
+            // RADE DSP settings.  Do NOT touch chkRADAE/chkRADAERX2 here:
+            // TX-profile recall may restore RADE parameters, but never its
+            // master ON/OFF state.  Setup Options is the sole authority.
             cmbRX1RADEVersion.SelectedIndex = Math.Min(Math.Max(DB.ConvertFromDBVal<int>(dr["RADE_VersionRX1"]), 0), Math.Max(cmbRX1RADEVersion.Items.Count - 1, 0));
             cmbRX2RADEVersion.SelectedIndex = Math.Min(Math.Max(DB.ConvertFromDBVal<int>(dr["RADE_VersionRX2"]), 0), Math.Max(cmbRX2RADEVersion.Items.Count - 1, 0));
             udRadaeMicLevel.Value = Math.Min(Math.Max(DB.ConvertFromDBVal<decimal>(dr["RADE_MicLevel"]), udRadaeMicLevel.Minimum), udRadaeMicLevel.Maximum);
@@ -34442,15 +34432,13 @@ namespace Thetis
                 && char.IsLetter(s[5]) && char.IsLower(s[5]);
         }
 
-        // Public accessors used by the console-side mirrors so the master
-        // state remains a single source of truth on the Setup checkboxes.
-        // Setters are idempotent: assigning the same value is a WinForms
-        // no-op (CheckedChanged fires only on real state change), so
-        // cross-mirror writes can't recurse.
+        // RADE master enable is owned exclusively by the Setup checkboxes.
+        // The setter remains only for source compatibility with older callers;
+        // external writes are intentionally ignored.
         public bool RADAE
         {
             get { return chkRADAE.Checked; }
-            set { if (chkRADAE.Checked != value) chkRADAE.Checked = value; }
+            set { /* Setup is authoritative: external writes are ignored. */ }
         }
         public bool RADAEReporter
         {
@@ -34515,7 +34503,7 @@ namespace Thetis
         public bool RADAERX2
         {
             get { return chkRADAERX2.Checked; }
-            set { if (chkRADAERX2.Checked != value) chkRADAERX2.Checked = value; }
+            set { /* Setup is authoritative: external writes are ignored. */ }
         }
         public bool RADAEReportingRX2
         {
