@@ -8282,9 +8282,6 @@ namespace Thetis
             if (string.IsNullOrEmpty(comboAMTXProfile.Text)) comboAMTXProfile.Text = "Default";
         }
         // Diversity operation is on RX1; therefore, the 'rx1_rate' will be used as the diversity rate;
-        // SQ4KOU: tracks only the TX-forced Protocol-1 ADC map. Normal RX does not
-        // rewrite RXADCCtrl_P1; one restore is issued only on the TX->RX transition.
-        private bool _sq4kouRpP1TxAdcForced = false;
         public void UpdateDDCs(bool rx2_enabled)
         {
             if (initializing) return;
@@ -8305,12 +8302,7 @@ namespace Thetis
 
             bool p1 = NetworkIO.CurrentRadioProtocol == RadioProtocol.USB;
             bool puresignal_enabled = psform.PSEnabled;
-            bool rpP1TxIn2Off = p1 && _mox && HardwareSpecific.Model == HPSDRModel.REDPITAYA;
-            bool diversity_enabled = rpP1TxIn2Off ? false : Diversity2;
-
-            // SQ4KOU: Red Pitaya / Protocol 1 unconditional TX -> IN2 OFF policy.
-            // The decision depends ONLY on TX/MOX. Diversity, PureSignal, RX2 and
-            // WideBand state are not allowed to keep the IN2 receive role alive.
+            bool diversity_enabled = Diversity2;
             if (diversity_enabled) P1_diversity = 1;
 
             switch (HardwareSpecific.Model)
@@ -8477,7 +8469,7 @@ namespace Thetis
                     }
 
                     // SQ4KOU: TX -> IN2 OFF: RX2 cannot keep the RP P1 extra DDC alive.
-                    if (rx2_enabled && !rpP1TxIn2Off)
+                    if (rx2_enabled)
                     {
                         DDCEnable += DDC3;
                         Rate[3] = rx2_rate;
@@ -8639,23 +8631,6 @@ namespace Thetis
                 NetworkIO.SetDDCRate(i, Rate[i]);
             NetworkIO.SetADC_cntrl1(cntrl1);
             NetworkIO.SetADC_cntrl2(cntrl2);
-            if (p1 && HardwareSpecific.Model == HPSDRModel.REDPITAYA)
-            {
-                if (rpP1TxIn2Off)
-                {
-                    // SQ4KOU: TX-only hard gate. Do not continuously rewrite the P1 ADC
-                    // map in RX; this preserves native RX S-ATT/FFT ADC bookkeeping.
-                    NetworkIO.SetADC_cntrl_P1(0);
-                    _sq4kouRpP1TxAdcForced = true;
-                }
-                else if (_sq4kouRpP1TxAdcForced)
-                {
-                    // One-shot restore after TX. Outside this transition, RX remains on
-                    // the native Thetis RXADCCtrl_P1 path (UpdateRXADCCtrlP1).
-                    NetworkIO.SetADC_cntrl_P1(RXADCCtrl_P1);
-                    _sq4kouRpP1TxAdcForced = false;
-                }
-            }
             NetworkIO.CmdRx();
             NetworkIO.Protocol1DDCConfig(P1_DDCConfig, P1_diversity, P1_rxcount, nddc);
 
@@ -8670,10 +8645,7 @@ namespace Thetis
             int rx1 = -1, rx2 = -1, sync1 = -1, sync2 = -1, psrx = -1, pstx = -1;
 
             int nME = MOX ? 1 : 0; // [0]
-            bool rpP1TxIn2OffForMap = NetworkIO.CurrentRadioProtocol == RadioProtocol.USB && MOX && HardwareSpecific.Model == HPSDRModel.REDPITAYA;
-            // SQ4KOU: Red Pitaya / Protocol 1 TX GetDDC Diversity-off gate.
-            // TX alone is authoritative; GUI Diversity is not modified.
-            int nDE = (!rpP1TxIn2OffForMap && diversityForm != null && Diversity2) ? 1 : 0; // [1]
+            int nDE = diversityForm != null && Diversity2 ? 1 : 0; // [1]
             int nPSE = psform.PSEnabled ? 1 : 0; // [2]
 
             int tot = nME + (nDE << 1) + (nPSE << 2);
