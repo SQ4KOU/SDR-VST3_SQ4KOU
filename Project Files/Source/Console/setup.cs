@@ -259,12 +259,12 @@ namespace Thetis
             GroupBox grp = new GroupBox();
             grp.Text = "RX Filter Presets";
             grp.Location = new Point(16, 16);
-            grp.Size = new Size(360, 132);
+            grp.Size = new Size(420, 206);
 
             Label info = new Label();
             info.AutoSize = false;
             info.Location = new Point(16, 24);
-            info.Size = new Size(326, 38);
+            info.Size = new Size(386, 38);
             info.Text = "Configure the same F1-F10, VAR1 and VAR2 presets used by the main-console filter controls.";
 
             Button btnRX1Filters = new Button();
@@ -281,9 +281,59 @@ namespace Thetis
             btnRX2Filters.Size = new Size(150, 30);
             btnRX2Filters.Click += delegate { console.ShowRX2FilterConfiguration(); };
 
+            Button btnRX1Reset = new Button();
+            btnRX1Reset.Name = "btnSetupRX1FilterReset";
+            btnRX1Reset.Text = "RX1 Reset to Default";
+            btnRX1Reset.Location = new Point(16, 112);
+            btnRX1Reset.Size = new Size(150, 26);
+            btnRX1Reset.Click += delegate { console.ResetRX1FilterPresetsToDefault(); };
+
+            Button btnRX2Reset = new Button();
+            btnRX2Reset.Name = "btnSetupRX2FilterReset";
+            btnRX2Reset.Text = "RX2 Reset to Default";
+            btnRX2Reset.Location = new Point(188, 112);
+            btnRX2Reset.Size = new Size(150, 26);
+            btnRX2Reset.Click += delegate { console.ResetRX2FilterPresetsToDefault(); };
+
+            Label lblTuneStepSetup = new Label();
+            lblTuneStepSetup.AutoSize = true;
+            lblTuneStepSetup.Location = new Point(16, 159);
+            lblTuneStepSetup.Text = "Tune Step:";
+
+            ComboBox comboTuneStepSetup = new ComboBox();
+            comboTuneStepSetup.Name = "comboSetupTuneStep";
+            comboTuneStepSetup.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboTuneStepSetup.Location = new Point(88, 155);
+            comboTuneStepSetup.Size = new Size(120, 21);
+
+            foreach (var step in console.TuneStepList)
+                comboTuneStepSetup.Items.Add(step.Name);
+
+            Action syncTuneStep = delegate
+            {
+                int index = console.TuneStepIndex;
+                if (index >= 0 && index < comboTuneStepSetup.Items.Count &&
+                    comboTuneStepSetup.SelectedIndex != index)
+                    comboTuneStepSetup.SelectedIndex = index;
+            };
+
+            comboTuneStepSetup.SelectedIndexChanged += delegate
+            {
+                if (comboTuneStepSetup.SelectedIndex >= 0 &&
+                    comboTuneStepSetup.SelectedIndex != console.TuneStepIndex)
+                    console.TuneStepIndex = comboTuneStepSetup.SelectedIndex;
+            };
+            comboTuneStepSetup.DropDown += delegate { syncTuneStep(); };
+            pageFilters.Enter += delegate { syncTuneStep(); };
+            syncTuneStep();
+
             grp.Controls.Add(info);
             grp.Controls.Add(btnRX1Filters);
             grp.Controls.Add(btnRX2Filters);
+            grp.Controls.Add(btnRX1Reset);
+            grp.Controls.Add(btnRX2Reset);
+            grp.Controls.Add(lblTuneStepSetup);
+            grp.Controls.Add(comboTuneStepSetup);
             pageFilters.Controls.Add(grp);
             tcDSP.TabPages.Add(pageFilters);
         }
