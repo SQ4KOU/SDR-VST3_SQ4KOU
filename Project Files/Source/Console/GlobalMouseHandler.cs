@@ -148,6 +148,13 @@ namespace Thetis
                 "panelButtonBar",
                 "panelAndromedaMisc",
 
+                // RX1 squelch is not contained in a PanelTS in the native
+                // designer. It is three separate top-level controls that
+                // visually form one movable block.
+                "chkSquelch",
+                "ptbSquelch",
+                "picSquelch",
+
                 // Top-level GroupBoxTS blocks. These were previously excluded
                 // because the drag resolver accepted PanelTS only.
                 "grpMultimeter",
@@ -391,7 +398,10 @@ namespace Thetis
             if (control == null) return false;
             if (!_nativeMovablePanelNames.Contains(control.Name)) return false;
 
-            return control is PanelTS || control is GroupBoxTS;
+            return control is PanelTS || control is GroupBoxTS ||
+                   control.Name == "chkSquelch" ||
+                   control.Name == "ptbSquelch" ||
+                   control.Name == "picSquelch";
         }
 
         private Control ResolveNativeMovablePanel(IntPtr hwnd)
@@ -444,6 +454,17 @@ namespace Thetis
                         "panelModeSpecificPhone",
                         "panelModeSpecificDigital",
                         "panelModeSpecificFM"
+                    };
+                    break;
+
+                case "chkSquelch":
+                case "ptbSquelch":
+                case "picSquelch":
+                    names = new[]
+                    {
+                        "chkSquelch",
+                        "ptbSquelch",
+                        "picSquelch"
                     };
                     break;
 
