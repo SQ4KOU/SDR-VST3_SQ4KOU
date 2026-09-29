@@ -281,7 +281,7 @@ int MetisReadDirect(unsigned char* bufp) {
 				if (submit_frame) SQ4KOU_P1_WBSubmitFrame();
 				return 4;
 			}
-			else f (endpoint == 6) {
+			else if (endpoint == 6) {
 				if ((inpacket.readbuf[8] == 0x7f) && (inpacket.readbuf[9] == 0x7f) && (inpacket.readbuf[10] == 0x7f)) {
 					HaveSync = 1;
 				}
