@@ -30,56 +30,6 @@ int PreviousTXBit = 0;							// used to detect TX/RX change
 unsigned int MetisOutBoundSeqNum;
 PRO prop;
 
-/* SQ4KOU_P1_WB_ASYNC_V1
- * Protocol-1 EP4 receive path must not call WDSP Spectrum().
- * Assemble one complete 16384-sample WideBand frame here and hand it
- * to one background worker. If the worker is still busy, drop only
- * the next WideBand frame; EP6/DDC RX always keeps priority.
- */
-#define SQ4KOU_P1_WB_SPP 512
-#define SQ4KOU_P1_WB_PPF 32
-#define SQ4KOU_P1_WB_PACKET_BYTES (SQ4KOU_P1_WB_SPP * 2)
-#define SQ4KOU_P1_WB_FRAME_BYTES (SQ4KOU_P1_WB_PACKET_BYTES * SQ4KOU_P1_WB_PPF)
-
-typedef struct _SQ4KOU_P1_WB_JOB
-{
-    volatile LONG busy;
-    unsigned char raw[SQ4KOU_P1_WB_FRAME_BYTES];
-} SQ4KOU_P1_WB_JOB;
-
-static unsigned char sq4kou_p1_wb_collect[SQ4KOU_P1_WB_FRAME_BYTES];
-static SQ4KOU_P1_WB_JOB sq4kou_p1_wb_job = { 0 };
-
-static DWORD WINAPI SQ4KOU_P1_WBWorker(LPVOID param)
-{
-    SQ4KOU_P1_WB_JOB* job = (SQ4KOU_P1_WB_JOB*)param;
-    double wb_buff[SQ4KOU_P1_WB_SPP];
-    int packet, ii, jj;
-
-    for (packet = 0; packet < SQ4KOU_P1_WB_PPF; packet++)
-    {
-        const unsigned char* src = job->raw + packet * SQ4KOU_P1_WB_PACKET_BYTES;
-        for (ii = 0, jj = 0; ii < SQ4KOU_P1_WB_SPP; ++ii, jj += 2)
-            wb_buff[ii] = const_1_div_2147483648_ *
-                (double)(src[jj] << 24 | src[jj + 1] << 16);
-        Spectrum(prn->wb_base_dispid, 0, 0, wb_buff, wb_buff);
-    }
-
-    InterlockedExchange(&job->busy, 0);
-    return 0;
-}
-
-static void SQ4KOU_P1_WBSubmitFrame(void)
-{
-    SQ4KOU_P1_WB_JOB* job = &sq4kou_p1_wb_job;
-    if (InterlockedCompareExchange(&job->busy, 1, 0) != 0) return;
-
-    memcpy(job->raw, sq4kou_p1_wb_collect, SQ4KOU_P1_WB_FRAME_BYTES);
-    if (!QueueUserWorkItem(SQ4KOU_P1_WBWorker, job, WT_EXECUTEDEFAULT))
-        InterlockedExchange(&job->busy, 0);
-}
-
-
 int SendStartToMetis(void) {
 	int i;
 	int starting_seq;
@@ -116,19 +66,6 @@ int SendStartToMetis(void) {
 	}
 
 	return 0;
-}
-
-/* Update Metis run bits without restarting the Protocol-1 DDC/audio path. */
-int SendRunToMetis(void) {
-	struct outdgram { unsigned char packetbuf[64]; } outpacket;
-	if (listenSock == INVALID_SOCKET) return -1;
-	memset(outpacket.packetbuf, 0, sizeof(outpacket));
-	outpacket.packetbuf[0] = 0xef;
-	outpacket.packetbuf[1] = 0xfe;
-	outpacket.packetbuf[2] = 0x04;
-	/* TX -> IN2 OFF: EP4/WideBand is never requested while keyed. */
-	outpacket.packetbuf[3] = 0x01 | ((!XmitBit && (prn->wb_enable & 0x01)) ? 0x02 : 0x00);
-	return sendPacket(listenSock, (char*)&outpacket, sizeof(outpacket), prn->base_outbound_port);
 }
 
 PORT
@@ -241,47 +178,7 @@ int MetisReadDirect(unsigned char* bufp) {
 			seqbytep[1] = inpacket.readbuf[6];
 			seqbytep[0] = inpacket.readbuf[7];
 
-			if (endpoint == 4) {
-				/* P1 WB logical ADC0 is physical RP IN2/ADC-B. */
-				/* SQ4KOU_P1_WB_ASYNC_V1: receive/copy only. */
-				int submit_frame = 0;
-
-				if (seqnum == 0)
-				{
-					prn->adc[0].wb_state = 1;
-					prn->adc[0].wb_seqnum = 0;
-				}
-
-				if (prn->adc[0].wb_state == 1 &&
-					seqnum < SQ4KOU_P1_WB_PPF &&
-					seqnum == (unsigned int)prn->adc[0].wb_seqnum)
-				{
-					memcpy(sq4kou_p1_wb_collect + seqnum * SQ4KOU_P1_WB_PACKET_BYTES,
-						inpacket.readbuf + 8, SQ4KOU_P1_WB_PACKET_BYTES);
-
-					if (prn->adc[0].wb_seqnum == SQ4KOU_P1_WB_PPF - 1)
-					{
-						prn->adc[0].wb_state = 0;
-						prn->adc[0].wb_seqnum = 0;
-						submit_frame = 1;
-					}
-					else
-					{
-						prn->adc[0].wb_seqnum++;
-					}
-				}
-				else
-				{
-					/* Lost/out-of-order EP4: discard this WB frame only. */
-					prn->adc[0].wb_state = 0;
-					prn->adc[0].wb_seqnum = 0;
-				}
-
-				LeaveCriticalSection(&prn->rcvpktp1);
-				if (submit_frame) SQ4KOU_P1_WBSubmitFrame();
-				return 4;
-			}
-			else if (endpoint == 6) {
+			if (endpoint == 6) {
 				if ((inpacket.readbuf[8] == 0x7f) && (inpacket.readbuf[9] == 0x7f) && (inpacket.readbuf[10] == 0x7f)) {
 					HaveSync = 1;
 				}
