@@ -1774,10 +1774,10 @@ namespace Thetis
             a.Add("QSOTimerFilenameWav", console.QSOTimerAudioPlayer.SoundFile);
 
             //a.Add("chkRadioProtocolSelect_checkstate", chkRadioProtocolSelect.CheckState.ToString()); //[2.10.3.5]MW0LGE not used anymore
-            a.Add("lgLinearGradientRX1", lgLinearGradientRX1.Text);
-            a.Add("lgLinearGradient_waterfall", lgLinearGradient_waterfall.Text);
-            a.Add("lgLinearGradientTX", lgLinearGradientTX.Text);
-            a.Add("lgLinearGradientTX_waterfall", lgLinearGradientTX_waterfall.Text);
+            a["lgLinearGradientRX1"] = lgLinearGradientRX1.Text;
+            a["lgLinearGradient_waterfall"] = lgLinearGradient_waterfall.Text;
+            a["lgLinearGradientTX"] = lgLinearGradientTX.Text;
+            a["lgLinearGradientTX_waterfall"] = lgLinearGradientTX_waterfall.Text;
 
             // store PA profiles
             if (_PAProfiles != null)
