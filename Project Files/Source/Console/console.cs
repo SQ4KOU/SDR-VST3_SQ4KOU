@@ -40774,6 +40774,11 @@ namespace Thetis
             ShowRX1FilterConfiguration();
         }
 
+        public void ResetRX1FilterPresetsToDefault()
+        {
+            toolStripMenuItemRX1FilterReset_Click(this, EventArgs.Empty);
+        }
+
         private void toolStripMenuItemRX1FilterReset_Click(object sender, EventArgs e)
         {
             if (_rx1_dsp_mode == DSPMode.DRM || _rx1_dsp_mode == DSPMode.SPEC) return;
@@ -40857,6 +40862,11 @@ namespace Thetis
 
         private void toolStripNotchVeryDeep_Click(object sender, EventArgs e)
         {
+        }
+
+        public void ResetRX2FilterPresetsToDefault()
+        {
+            toolStripMenuItemRX2FilterReset_Click(this, EventArgs.Empty);
         }
 
         private void toolStripMenuItemRX2FilterReset_Click(object sender, EventArgs e)
