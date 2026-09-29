@@ -37628,18 +37628,10 @@ namespace Thetis
         {
             try
             {
-                // Main-console RADE control is a mirror only. Setup is the sole
-                // owner of the enable state, so any attempted external/UI write
-                // is immediately corrected back to the Setup value.
-                bool authoritative = !IsSetupFormNull && SetupForm.RADAE;
-                if (chkRADE.Checked != authoritative)
-                {
-                    chkRADE.Checked = authoritative;
-                    return;
-                }
-
-                if (btnFreeDV != null && btnFreeDV.Checked != authoritative)
-                    btnFreeDV.Checked = authoritative;
+                if (btnFreeDV != null && btnFreeDV.Checked != chkRADE.Checked)
+                    btnFreeDV.Checked = chkRADE.Checked;
+                if (!IsSetupFormNull && SetupForm.RADAE != chkRADE.Checked)
+                    SetupForm.RADAE = chkRADE.Checked;
             }
             catch { }
         }
@@ -37647,18 +37639,11 @@ namespace Thetis
         {
             try
             {
-                bool authoritative = !IsSetupFormNull && SetupForm.RADAE;
-
-                // Front-panel button is an indicator/mirror, not an owner.
-                if (btnFreeDV.Checked != authoritative)
-                {
-                    btnFreeDV.Checked = authoritative;
-                    return;
-                }
-
-                btnFreeDV.BackColor = authoritative ? button_selected_color : SystemColors.Control;
-                if (chkRADE != null && chkRADE.Checked != authoritative)
-                    chkRADE.Checked = authoritative;
+                btnFreeDV.BackColor = btnFreeDV.Checked ? button_selected_color : SystemColors.Control;
+                if (chkRADE != null && chkRADE.Checked != btnFreeDV.Checked)
+                    chkRADE.Checked = btnFreeDV.Checked;
+                if (!IsSetupFormNull && SetupForm.RADAE != btnFreeDV.Checked)
+                    SetupForm.RADAE = btnFreeDV.Checked;
             }
             catch { }
         }
@@ -44057,10 +44042,13 @@ namespace Thetis
             if (Thetis.FLDIGI.FldigiManager.Enabled)
                 return;
             // Mutual exclusion with RADE/FreeDV: the fldigi sidecar and the
-            // RADE state is owned by Setup.  FLDIGI is not allowed to
-            // change it; if RADE is enabled, leave FLDIGI off.
-            if (!IsSetupFormNull && (SetupForm.RADAE || SetupForm.RADAERX2))
-                return;
+            // RADE modem cannot run at the same time, so turning fldigi ON
+            // turns RADE OFF.  SetupForm.RADAE / RADAERX2 are the single
+            // choke points (idempotent setters -> chkRADAE* ->
+            // chkRADAE*_CheckedChanged).  RX2 too: its encoder shares the
+            // TX chain, so a live sidecar must see RADE off end to end.
+            try { if (!IsSetupFormNull && SetupForm.RADAE) SetupForm.RADAE = false; } catch { }
+            try { if (!IsSetupFormNull && SetupForm.RADAERX2) SetupForm.RADAERX2 = false; } catch { }
             Thetis.FLDIGI.FldigiManager.SetEnabled(true);
             UpdateFldigiMenuItem();
         }
@@ -44072,10 +44060,12 @@ namespace Thetis
             // Thetis exiting.  Ignore a click while the session is already on.
             if (Thetis.WSJTX.WsjtManager.Enabled)
                 return;
-            // RADE state is owned by Setup.  WSJT-X is not allowed to
-            // change it; if RADE is enabled, leave WSJT-X off.
-            if (!IsSetupFormNull && (SetupForm.RADAE || SetupForm.RADAERX2))
-                return;
+            // Mutual exclusion with RADE/FreeDV: RADE RX re-injects decoded
+            // speech into the AF in-place, which would corrupt the FT8 tap
+            // (the WSJT-X tap runs after xradae_rx on the same buffer), so
+            // turning WSJT-X ON turns RADE OFF end to end.
+            try { if (!IsSetupFormNull && SetupForm.RADAE) SetupForm.RADAE = false; } catch { }
+            try { if (!IsSetupFormNull && SetupForm.RADAERX2) SetupForm.RADAERX2 = false; } catch { }
             Thetis.WSJTX.WsjtManager.SetEnabled(true);
             UpdateWsjtMenuItem();
         }
