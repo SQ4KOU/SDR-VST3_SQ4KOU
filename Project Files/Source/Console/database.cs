@@ -806,13 +806,35 @@ namespace Thetis
 
         private static void checkForPrimaryKeys(string name)
         {
-            DataColumn[] keys = new DataColumn[1];
-            keys[0] = ds.Tables[name].Columns["Key"];
+            if (ds == null || !ds.Tables.Contains(name)) return;
 
-            if (ds.Tables[name].PrimaryKey != keys)
+            DataTable table = ds.Tables[name];
+            if (!table.Columns.Contains("Key")) return;
+
+            // SQ4KOU persistence integrity:
+            // Older/corrupted XML databases can contain duplicate keys. Setting a
+            // primary key on such a table throws ConstraintException and prevents
+            // later Save/Restore operations. Keep the last occurrence (the newest
+            // effective value in file order) and remove older duplicates first.
+            Dictionary<string, DataRow> lastByKey = new Dictionary<string, DataRow>(StringComparer.Ordinal);
+            List<DataRow> duplicates = new List<DataRow>();
+            foreach (DataRow row in table.Rows)
             {
-                ds.Tables[name].PrimaryKey = keys;
+                if (row.RowState == DataRowState.Deleted) continue;
+                string key = Convert.ToString(row["Key"]);
+                if (lastByKey.TryGetValue(key, out DataRow previous))
+                    duplicates.Add(previous);
+                lastByKey[key] = row;
             }
+            foreach (DataRow row in duplicates)
+            {
+                if (row.RowState != DataRowState.Deleted)
+                    table.Rows.Remove(row);
+            }
+
+            DataColumn keyColumn = table.Columns["Key"];
+            if (table.PrimaryKey == null || table.PrimaryKey.Length != 1 || table.PrimaryKey[0] != keyColumn)
+                table.PrimaryKey = new DataColumn[] { keyColumn };
         }
         private static void AddFormTable(string name)
         {
@@ -9814,9 +9836,38 @@ namespace Thetis
                 }
                 catch
                 {
-                    return false;
+                    // The active XML may have been externally truncated or damaged.
+                    // Recover only from the automatically maintained last-known-good
+                    // copy; never silently create a blank database over user settings.
+                    string lastGoodFile = _file_name + ".lastgood";
+                    if (!File.Exists(lastGoodFile))
+                        return false;
+
+                    try
+                    {
+                        DataSet recovered = new DataSet("Data");
+                        recovered.ReadXml(lastGoodFile);
+                        if (recovered.HasErrors || recovered.Tables.Count == 0)
+                            return false;
+
+                        ds = recovered;
+                        if (!WriteDB(_file_name, ds))
+                            return false;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
                 }
-            }                
+            }
+
+            // Heal duplicate legacy Key/Value rows before any caller attempts to
+            // impose primary-key constraints or build dictionaries from the tables.
+            foreach (DataTable table in ds.Tables)
+            {
+                if (table.Columns.Contains("Key") && table.Columns.Contains("Value"))
+                    checkForPrimaryKeys(table.TableName);
+            }
 
             VerifyTables();
 
@@ -9878,13 +9929,57 @@ namespace Thetis
         //-W2PA Write specific dataset to a file 
         public static bool WriteDB(string fn, DataSet dsIN)
         {
+            if (dsIN == null || string.IsNullOrWhiteSpace(fn)) return false;
+
+            string tempFile = fn + ".tmp";
+            string lastGoodFile = fn + ".lastgood";
+
             try
             {
-                dsIN.WriteXml(fn, XmlWriteMode.WriteSchema);
+                string directory = Path.GetDirectoryName(fn);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+
+                // Never write directly over the active database. A crash, forced
+                // shutdown or I/O error during WriteXml must not leave database.xml
+                // truncated. Write + flush + re-read validation first.
+                using (FileStream fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    dsIN.WriteXml(fs, XmlWriteMode.WriteSchema);
+                    fs.Flush(true);
+                }
+
+                DataSet verification = new DataSet();
+                verification.ReadXml(tempFile);
+                if (verification.HasErrors ||
+                    verification.DataSetName != dsIN.DataSetName ||
+                    verification.Tables.Count == 0)
+                {
+                    throw new InvalidDataException("Temporary database verification failed.");
+                }
+
+                if (File.Exists(fn))
+                {
+                    // File.Replace is atomic on the same volume and also preserves
+                    // the immediately preceding known-good copy for startup recovery.
+                    File.Replace(tempFile, fn, lastGoodFile, true);
+                }
+                else
+                {
+                    File.Move(tempFile, fn);
+                    File.Copy(fn, lastGoodFile, true);
+                }
+
                 DBMan.DBWritten();
             }
             catch (Exception ex)
             {
+                try
+                {
+                    if (File.Exists(tempFile)) File.Delete(tempFile);
+                }
+                catch { }
+
                 MessageBox.Show("A database write to file operation failed.  " +
                     "The exception error was:\n\n" + ex.Message,
                     "ERROR: Database Write Error",
@@ -10341,13 +10436,18 @@ namespace Thetis
                 return dict;
 
             DataTable table = ds.Tables[table_name];
-            dict = new Dictionary<string, string>(table.Rows.Count);
+            dict = new Dictionary<string, string>(table.Rows.Count, StringComparer.Ordinal);
 
+            // Do not let one duplicated legacy key abort the whole restore. File order
+            // is authoritative here: the last occurrence wins, matching the repair
+            // performed before primary-key enforcement.
             foreach (DataRow row in table.Rows)
             {
+                if (row.RowState == DataRowState.Deleted) continue;
                 string key = row[0].ToString();
                 string value = row[1].ToString();
-                dict.Add(key, value);
+                if (!string.IsNullOrEmpty(key))
+                    dict[key] = value;
             }
 
             return dict;
