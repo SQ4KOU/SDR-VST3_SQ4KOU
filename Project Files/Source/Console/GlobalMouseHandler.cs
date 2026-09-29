@@ -170,6 +170,44 @@ namespace Thetis
             }
         }
 
+        private Dictionary<string, Point> CapturePersistedNativePanelLocations()
+        {
+            Dictionary<string, Point> captured = new Dictionary<string, Point>(StringComparer.Ordinal);
+
+            foreach (string name in _nativeMovablePanelNames)
+            {
+                if (!PersistNativePanelLocation(name)) continue;
+
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                if (panel != null)
+                    captured[name] = panel.Location;
+            }
+
+            return captured;
+        }
+
+        private void RestoreCapturedNativePanelLocations(Dictionary<string, Point> captured)
+        {
+            if (captured == null || captured.Count == 0) return;
+
+            foreach (KeyValuePair<string, Point> kvp in captured)
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == kvp.Key);
+                if (panel == null) continue;
+
+                int maxX = Math.Max(0, ClientSize.Width - panel.Width);
+                int maxY = Math.Max(0, ClientSize.Height - panel.Height);
+                Point restored = new Point(
+                    Math.Max(0, Math.Min(maxX, kvp.Value.X)),
+                    Math.Max(0, Math.Min(maxY, kvp.Value.Y)));
+
+                if (panel.Location != restored)
+                    panel.Location = restored;
+            }
+        }
+
         private void RestoreNativePanelLocationsFromState()
         {
             Dictionary<string, Point> saved = new Dictionary<string, Point>(StringComparer.Ordinal);
