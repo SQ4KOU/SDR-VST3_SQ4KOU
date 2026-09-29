@@ -106,15 +106,21 @@ namespace Thetis
         private static readonly HashSet<string> _nativeMovablePanelNames =
             new HashSet<string>(StringComparer.Ordinal)
             {
+                // Top-level PanelTS blocks
                 "panelBandHF",
                 "panelBandVHF",
                 "panelBandGEN",
                 "panelMode",
                 "panelFilter",
+                "panelDisplay",
                 "panelDisplay2",
+                "panelMeterLabels",
                 "panelOptions",
                 "panelSoundControls",
                 "panelVFO",
+                "panelVFOALabels",
+                "panelVFOBLabels",
+                "panelVFOLabels",
                 "panelDSP",
                 "panelMultiRX",
                 "panelPower",
@@ -130,7 +136,17 @@ namespace Thetis
                 "panelRX2Power",
                 "panelRX2RF",
                 "panelButtonBar",
-                "panelAndromedaMisc"
+                "panelAndromedaMisc",
+
+                // Top-level GroupBoxTS blocks. These were previously excluded
+                // because the drag resolver accepted PanelTS only.
+                "grpMultimeter",
+                "grpRX2Meter",
+                "grpDisplaySplit",
+                "grpVFOBetween",
+                "grpVFOA",
+                "grpVFOB",
+                "grpMultimeterMenus"
             };
 
         private void InitializeNativePanelShiftDrag()
@@ -149,7 +165,8 @@ namespace Thetis
             // restoring their coordinates while RX2 is OFF can pull those panels back
             // onto the Console even though RX2 itself was never enabled.
             return _nativeMovablePanelNames.Contains(name) &&
-                   !name.StartsWith("panelRX2", StringComparison.Ordinal);
+                   !name.StartsWith("panelRX2", StringComparison.Ordinal) &&
+                   !name.StartsWith("grpRX2", StringComparison.Ordinal);
         }
 
         private void AppendNativePanelLocations(List<string> state)
@@ -255,6 +272,14 @@ namespace Thetis
         }
 
 
+        private static bool IsNativeMovableControl(Control control)
+        {
+            if (control == null) return false;
+            if (!_nativeMovablePanelNames.Contains(control.Name)) return false;
+
+            return control is PanelTS || control is GroupBoxTS;
+        }
+
         private Control ResolveNativeMovablePanel(IntPtr hwnd)
         {
             Control c = hwnd != IntPtr.Zero ? Control.FromHandle(hwnd) : null;
@@ -263,7 +288,7 @@ namespace Thetis
             {
                 if (c.Parent == this)
                 {
-                    if (c is PanelTS && _nativeMovablePanelNames.Contains(c.Name))
+                    if (IsNativeMovableControl(c))
                         return c;
 
                     break;
@@ -277,7 +302,7 @@ namespace Thetis
             // the current pointer.
             Point client = PointToClient(Control.MousePosition);
             Control direct = GetChildAtPoint(client, GetChildAtPointSkip.Invisible);
-            if (direct is PanelTS && _nativeMovablePanelNames.Contains(direct.Name))
+            if (IsNativeMovableControl(direct))
                 return direct;
 
             return null;
