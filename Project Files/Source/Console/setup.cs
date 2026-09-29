@@ -21388,8 +21388,12 @@ namespace Thetis
                     radDDC4ADC2.Enabled = true;
                     radDDC5ADC2.Enabled = true;
                     radDDC6ADC2.Enabled = true;
-                    chkAutoATTRx1.Enabled = false; //DH1KLM, not possible for Red Pitaya since ADC overflow pin not implement in Hard and Firmware
-                    chkAutoATTRx2.Enabled = false; //DH1KLM, not possible for Red Pitaya since ADC overflow pin not implement in Hard and Firmware
+                    // SQ4KOU: enable native Auto Attenuate RX for Red Pitaya.
+                    // The current Protocol 1/2 receive paths expose ADC overload
+                    // state through getAndResetADC_Overload(), so the legacy
+                    // Red Pitaya UI lockout is no longer appropriate.
+                    chkAutoATTRx1.Enabled = true;
+                    chkAutoATTRx2.Enabled = true;
                     setupAttRXControls(1);
                     setupAttRXControls(2);
                     break;
