@@ -247,6 +247,15 @@ namespace Thetis
                     if (panel.Location != target)
                         panel.Location = target;
                 }
+
+                // Only the native mode-selection logic decides which one is visible.
+                // Keep that currently visible panel on top after any delayed layout/
+                // location restore. Without this, another top-level Console panel can
+                // later cover panelModeSpecificPhone/CW/Digital/FM even though its
+                // Visible property is still true.
+                Control visiblePanel = panels.FirstOrDefault(p => p.Visible);
+                if (visiblePanel != null)
+                    visiblePanel.BringToFront();
             }
             finally
             {
@@ -325,6 +334,11 @@ namespace Thetis
                 if (panel.Location != restored)
                     panel.Location = restored;
             }
+
+            // RX2/layout transitions can alter top-level Z-order without changing
+            // the mode-specific panel's Visible flag. Re-assert the shared position
+            // and foreground ownership after the restore pass.
+            ApplyNativeModeSpecificSharedLocation();
         }
 
         private void RestoreNativePanelLocationsFromState()
