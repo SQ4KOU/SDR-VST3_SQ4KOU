@@ -8234,6 +8234,33 @@ namespace Thetis
             Color lowCol, Color[] gradArray, bool gradOk, out int R, out int G, out int B)
         {
             R = 0; G = 0; B = 0;
+
+            // SQ4KOU: keep BandScope/3D Waterfall Sync on the exact same native
+            // 256-entry LUT as the waterfall. Previously these schemes fell through
+            // to the final grayscale fallback, so selecting a *256 palette changed
+            // the waterfall but left the 3D surface effectively monochrome.
+            if (scheme == ColorScheme.Console ||
+                scheme == ColorScheme.Thermal ||
+                scheme == ColorScheme.DeepBlue ||
+                scheme == ColorScheme.Enhanced256 ||
+                scheme == ColorScheme.Grayscale256)
+            {
+                WaterfallPalette palette = GetGPUWaterfallPalette(scheme);
+                if (palette != null)
+                {
+                    float pct;
+                    if (highThreshold <= lowThreshold || dBm <= lowThreshold) pct = 0f;
+                    else if (dBm >= highThreshold) pct = 1f;
+                    else pct = (dBm - lowThreshold) / (highThreshold - lowThreshold);
+
+                    palette.Sample(pct, out float pr, out float pg, out float pb);
+                    R = Math.Max(0, Math.Min(255, (int)(pr + 0.5f)));
+                    G = Math.Max(0, Math.Min(255, (int)(pg + 0.5f)));
+                    B = Math.Max(0, Math.Min(255, (int)(pb + 0.5f)));
+                    return;
+                }
+            }
+
             if (scheme == ColorScheme.Custom && gradOk && gradArray != null)
             {
                 float pct;
