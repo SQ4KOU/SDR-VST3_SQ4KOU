@@ -109,6 +109,9 @@
     <Compile Include="CAT\TCPIPcatServer.cs" />
     <Compile Include="CAT\UsbBCDCable.cs" />
     <Compile Include="Channel.cs" />
+    <Compile Include="WaterfallID.Core.cs" />
+    <Compile Include="WaterfallID.Advanced.cs" />
+    <Compile Include="Console.WaterfallIDMenuFix.cs" />
     <Compile Include="clsAudioRecordPlayback.cs" />
     <Compile Include="clsBandStackManager.cs" />
     <Compile Include="clsCatAtonic.cs" />
