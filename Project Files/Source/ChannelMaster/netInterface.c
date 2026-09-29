@@ -28,7 +28,6 @@
 const int numInputBuffs = 12;
 
 int audio_running = 0;
-extern int SendRunToMetis(void);
 PORT
 int StartAudioNative()
 {
@@ -62,7 +61,6 @@ int StartAudioNative()
 				prn->hReadThreadMain = (HANDLE)_beginthreadex(NULL, 0, MetisReadThreadMain, 0, 0, NULL);
 			
 				WaitForSingleObject(prn->hReadThreadInitSem, INFINITE); // wait for the thread to get going
-				if (prn->wb_enable) SendRunToMetis();
 				
 				prn->hWriteThreadInitSem = CreateSemaphore(NULL, 0, 1, NULL);
 				prn->hWriteThreadMain = (HANDLE)_beginthreadex(NULL, 0, sendProtocol1Samples, 0, 0, NULL);
@@ -1444,19 +1442,10 @@ void SetWBUpdateRate(int ur)
 PORT
 void SetWBEnable(int adc, int enable)
 {
-	/* P1 exposes one logical WB ADC; physical source is RP IN2/ADC-B. */
-	if (RadioProtocol == USB) adc = 0;
 	if (enable) InterlockedBitTestAndSet(&prn->wb_enable, adc);
 	else        InterlockedBitTestAndReset(&prn->wb_enable, adc);
 	if (listenSock != INVALID_SOCKET)
-	{
-		if (RadioProtocol == USB)
-		{
-			/* Opening WB while radio is stopped must not start EP6. */
-			if (IOThreadRunning) SendRunToMetis();
-		}
-		else CmdGeneral();
-	}
+		CmdGeneral();
 }
 
 PORT
