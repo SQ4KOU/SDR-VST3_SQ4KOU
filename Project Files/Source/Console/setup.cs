@@ -728,6 +728,14 @@ namespace Thetis
             LogTool.AddLogEntry("        Setup applying settings...", "FORCEALL");
             ForceAllEvents();
 
+            // SQ4KOU: the Setup checkboxes are the authoritative persisted RADE state.
+            // ForceAllEvents invokes the normal handlers, but ChannelMaster is native
+            // process state and can survive earlier initialization paths with stale
+            // enable flags.  Re-assert the restored UI state once, after all startup
+            // handlers have run, so an unchecked RADE control can never leave the
+            // decoder/encoder active after restart.
+            SyncRadaeRuntimeFromControls();
+
             //model known, update anything that might have been initialsed without this being known
             if (console.psform != null) console.psform.UpdateWarningSetPk();
 
@@ -34103,6 +34111,39 @@ namespace Thetis
         }
 
         #region RADE (FreeDV/RADEV1 digital voice) - full Setup tab UI
+
+        private void SyncRadaeRuntimeFromControls()
+        {
+            try
+            {
+                int rx1 = chkRADAE != null && chkRADAE.Checked ? 1 : 0;
+                int rx2 = chkRADAERX2 != null && chkRADAERX2.Checked ? 1 : 0;
+
+                cmaster.SetRadaeRxEnabled(0, rx1);
+                cmaster.SetRadaeRxEnabled(1, rx2);
+                cmaster.SetRadaeTxEnabled((rx1 != 0 || rx2 != 0) ? 1 : 0);
+
+                // Loopback is independent from the RX enable flags and is also
+                // native runtime state. Keep it exactly aligned with its checkbox.
+                int loopback = chkRADAELoopback != null && chkRADAELoopback.Checked ? 1 : 0;
+                cmaster.SetRadaeLoopbackEnabled(0, loopback);
+
+                // Keep the front-console mirror aligned with the persisted owner.
+                if (console != null && console.chkRADEMirror != null &&
+                    console.chkRADEMirror.Checked != (rx1 != 0))
+                    console.chkRADEMirror.Checked = rx1 != 0;
+
+                if (console != null)
+                {
+                    console.NotifyRadaeEnabledChanged(1, rx1 != 0);
+                    console.NotifyRadaeEnabledChanged(2, rx2 != 0);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("RADE startup state sync failed: " + ex.Message);
+            }
+        }
 
         private void chkRADAE_CheckedChanged(object sender, EventArgs e)
         {
