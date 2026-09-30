@@ -104,6 +104,9 @@ namespace Thetis
         private Point _nativePanelDragMouseStart;
         private Point? _nativeModeSpecificSharedLocation;
         private bool _nativeApplyingModeSpecificLocation;
+        private readonly Dictionary<string, Point> _nativeAbsolutePanelLocations =
+            new Dictionary<string, Point>(StringComparer.Ordinal);
+        private bool _nativeApplyingAbsolutePanelLocation;
 
         private static readonly string[] _nativeModeSpecificPanelNames =
         {
@@ -173,6 +176,76 @@ namespace Thetis
             _nativePanelShiftDragFilter = new NativePanelShiftDragFilter(this);
             Application.AddMessageFilter(_nativePanelShiftDragFilter);
             InitializeNativeModeSpecificLocationGuard();
+            InitializeNativeAbsoluteDisplayLocationGuard();
+        }
+
+        private static bool IsNativeAbsoluteDisplayPanelName(string name)
+        {
+            return name == "panelDisplay" || name == "panelDisplay2";
+        }
+
+        private void InitializeNativeAbsoluteDisplayLocationGuard()
+        {
+            foreach (string name in new[] { "panelDisplay", "panelDisplay2" })
+            {
+                Control panel = Controls.Cast<Control>()
+                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                if (panel == null) continue;
+
+                panel.LocationChanged -= NativeAbsoluteDisplayPanel_LocationChanged;
+                panel.LocationChanged += NativeAbsoluteDisplayPanel_LocationChanged;
+            }
+        }
+
+        private void NativeAbsoluteDisplayPanel_LocationChanged(object sender, EventArgs e)
+        {
+            if (_nativeApplyingAbsolutePanelLocation || IsDisposed || Disposing)
+                return;
+
+            Control panel = sender as Control;
+            if (panel == null || !IsNativeAbsoluteDisplayPanelName(panel.Name))
+                return;
+
+            if (_nativePanelDragPrimary == panel)
+                return;
+
+            if (!_nativeAbsolutePanelLocations.TryGetValue(panel.Name, out Point requested))
+                return;
+
+            int maxX = Math.Max(0, ClientSize.Width - panel.Width);
+            int maxY = Math.Max(0, ClientSize.Height - panel.Height);
+            Point target = new Point(
+                Math.Max(0, Math.Min(maxX, requested.X)),
+                Math.Max(0, Math.Min(maxY, requested.Y)));
+
+            if (panel.Location == target)
+                return;
+
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (IsDisposed || Disposing || _nativePanelDragPrimary == panel)
+                    return;
+
+                if (!_nativeAbsolutePanelLocations.TryGetValue(panel.Name, out Point saved))
+                    return;
+
+                int invokeMaxX = Math.Max(0, ClientSize.Width - panel.Width);
+                int invokeMaxY = Math.Max(0, ClientSize.Height - panel.Height);
+                Point restored = new Point(
+                    Math.Max(0, Math.Min(invokeMaxX, saved.X)),
+                    Math.Max(0, Math.Min(invokeMaxY, saved.Y)));
+
+                _nativeApplyingAbsolutePanelLocation = true;
+                try
+                {
+                    if (panel.Location != restored)
+                        panel.Location = restored;
+                }
+                finally
+                {
+                    _nativeApplyingAbsolutePanelLocation = false;
+                }
+            });
         }
 
         private void InitializeNativeModeSpecificLocationGuard()
@@ -419,6 +492,12 @@ namespace Thetis
                     panel.Location = restored;
             }
 
+            foreach (string absoluteName in new[] { "panelDisplay", "panelDisplay2" })
+            {
+                if (saved.TryGetValue(absoluteName, out Point absoluteLocation))
+                    _nativeAbsolutePanelLocations[absoluteName] = absoluteLocation;
+            }
+
             Point shared;
             if (saved.TryGetValue("panelModeSpecificPhone", out shared))
             {
@@ -608,6 +687,9 @@ namespace Thetis
                 _nativeModeSpecificSharedLocation = _nativePanelDragPrimary.Location;
                 ApplyNativeModeSpecificSharedLocation();
             }
+
+            if (IsNativeAbsoluteDisplayPanelName(_nativePanelDragPrimary.Name))
+                _nativeAbsolutePanelLocations[_nativePanelDragPrimary.Name] = _nativePanelDragPrimary.Location;
 
             _nativePanelDragPrimary = null;
             _nativePanelDragOrigins = null;
