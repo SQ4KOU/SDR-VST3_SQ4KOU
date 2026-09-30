@@ -188,6 +188,8 @@ namespace Thetis
                 if (seed == null) seed = panel;
                 panel.VisibleChanged -= NativeModeSpecificPanel_VisibleChanged;
                 panel.VisibleChanged += NativeModeSpecificPanel_VisibleChanged;
+                panel.LocationChanged -= NativeModeSpecificPanel_LocationChanged;
+                panel.LocationChanged += NativeModeSpecificPanel_LocationChanged;
             }
 
             if (seed != null && !_nativeModeSpecificSharedLocation.HasValue)
@@ -215,6 +217,37 @@ namespace Thetis
             {
                 if (!IsDisposed && !Disposing)
                     ApplyNativeModeSpecificSharedLocation();
+            });
+        }
+
+        private void NativeModeSpecificPanel_LocationChanged(object sender, EventArgs e)
+        {
+            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
+                return;
+
+            // During an operator Shift-drag the location change is intentional.
+            if (_nativePanelDragPrimary != null &&
+                IsNativeModeSpecificPanelName(_nativePanelDragPrimary.Name))
+                return;
+
+            Control panel = sender as Control;
+            if (panel == null || IsDisposed || Disposing)
+                return;
+
+            Point shared = _nativeModeSpecificSharedLocation.Value;
+            if (panel.Location == shared)
+                return;
+
+            // MODE/layout code can re-apply designer coordinates without changing
+            // visibility. Restore the shared operator-selected position after that
+            // layout pass completes.
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (!IsDisposed && !Disposing &&
+                    _nativePanelDragPrimary == null)
+                {
+                    ApplyNativeModeSpecificSharedLocation();
+                }
             });
         }
 
