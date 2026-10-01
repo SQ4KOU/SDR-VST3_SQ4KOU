@@ -562,13 +562,14 @@ namespace Thetis
         {
             if (!GpuMeshEnabled || m_eRenderPath != DXRenderPath.Hardware || _device == null || !_bDX2Setup)
                 return false;
-            if (!_pan3DEnabled || _3dHistoryBuffer == null || _3dHistoryCount < 3 || !_meshParams.Valid)
+            float[][] activeHistory = ActivePan3DHistory();
+            if (!_pan3DEnabled || activeHistory == null || _3dHistoryCount < 3 || !_meshParams.Valid)
                 return false;
             // TX/RX must not change the renderer path. 3D GPU acceleration is governed only\n            // by the global 3D/GPU controls; MOX changes data/levels, not Hardware vs CPU.\n            if (_paused_display) return false;
 
             try
             {
-                float[][] histBuf = _3dHistoryBuffer;
+                float[][] histBuf = activeHistory;
                 int histHead = _3dHistoryHead;
                 int histCount = _3dHistoryCount;
 
