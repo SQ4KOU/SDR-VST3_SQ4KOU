@@ -17869,6 +17869,7 @@ namespace Thetis
             get { return _rx1_dsp_mode; }
             set
             {
+                BandUiDiagnostics.Stage("RX1DSPMode.setter.enter", $"{_rx1_dsp_mode}->{value}");
                 //[2.10.3.6]MW0LGE no mode change on TX fix
                 if (MOX && (VFOATX || (!rx2_enabled && VFOBTX))) return;
 
@@ -17915,11 +17916,24 @@ namespace Thetis
 
                 if (r != null)
                 {
+                    BandUiDiagnostics.Stage("RX1DSPMode.r.Checked.before", r.Name);
                     r.Checked = true;
+                    BandUiDiagnostics.Stage("RX1DSPMode.r.Checked.after", r.Name);
                 }
 
-                if (modePopupForm != null) modePopupForm.RepopulateForm();
-                if (filterPopupForm != null) filterPopupForm.RepopulateForm();
+                if (modePopupForm != null)
+                {
+                    BandUiDiagnostics.Stage("RX1DSPMode.modePopup.before");
+                    modePopupForm.RepopulateForm();
+                    BandUiDiagnostics.Stage("RX1DSPMode.modePopup.after");
+                }
+                if (filterPopupForm != null)
+                {
+                    BandUiDiagnostics.Stage("RX1DSPMode.filterPopup.before");
+                    filterPopupForm.RepopulateForm();
+                    BandUiDiagnostics.Stage("RX1DSPMode.filterPopup.after");
+                }
+                BandUiDiagnostics.Stage("RX1DSPMode.setter.exit", _rx1_dsp_mode.ToString());
             }
         }
 
@@ -18027,6 +18041,7 @@ namespace Thetis
             get { return rx1_filter; }
             set
             {
+                BandUiDiagnostics.Stage("RX1Filter.setter.enter", $"{rx1_filter}->{value}");
                 if (_mode_changed_via_vsync) return;
 
                 RadioButtonTS r = null;
@@ -18077,13 +18092,23 @@ namespace Thetis
                 {
                     if (r.Checked)
                     {
+                        BandUiDiagnostics.Stage("RX1Filter.r.uncheck.before", r.Name);
                         r.Checked = false;
+                        BandUiDiagnostics.Stage("RX1Filter.r.uncheck.after", r.Name);
                     }
 
+                    BandUiDiagnostics.Stage("RX1Filter.r.check.before", r.Name);
                     r.Checked = true;
+                    BandUiDiagnostics.Stage("RX1Filter.r.check.after", r.Name);
                 }
 
-                if (filterPopupForm != null) filterPopupForm.RepopulateForm();
+                if (filterPopupForm != null)
+                {
+                    BandUiDiagnostics.Stage("RX1Filter.filterPopup.before");
+                    filterPopupForm.RepopulateForm();
+                    BandUiDiagnostics.Stage("RX1Filter.filterPopup.after");
+                }
+                BandUiDiagnostics.Stage("RX1Filter.setter.exit", rx1_filter.ToString());
             }
         }
 
@@ -18480,6 +18505,7 @@ namespace Thetis
             }
             set
             {
+                BandUiDiagnostics.Stage("VFOAFreq.setter.enter", $"{m_dVFOAFreq:F6}->{value:F6}");
                 if ((!_force_vfo_update && _vfoA_lock) || IsSetupFormNull) return; //[2.10.3.5]MW0LGE removed the state check //[2.10.3.7]MW0LGE always process if initialising
                 if (!this.InvokeRequired)
                 {
@@ -18496,9 +18522,15 @@ namespace Thetis
         private delegate void VFOUpdateDel(double freq);
         private void VFOAUpdate(double freq)
         {
+            BandUiDiagnostics.Stage("VFOAUpdate.enter", freq.ToString("F6"));
             m_dVFOAFreq = Math.Round(freq, 6); // MW0LGE_21d rounded to 6
+            BandUiDiagnostics.Stage("VFOAUpdate.Text.before");
             txtVFOAFreq.Text = freq.ToString("f6");
+            BandUiDiagnostics.Stage("VFOAUpdate.Text.after");
+            BandUiDiagnostics.Stage("VFOAUpdate.LostFocus.before");
             txtVFOAFreq_LostFocus(this, EventArgs.Empty);
+            BandUiDiagnostics.Stage("VFOAUpdate.LostFocus.after");
+            BandUiDiagnostics.Stage("VFOAUpdate.exit", VFOAFreq.ToString("F6"));
         }
         private void VFOBUpdate(double freq)
         {
@@ -46041,6 +46073,7 @@ namespace Thetis
 
         private void Console_Shown(object sender, EventArgs e)
         {
+            BandUiDiagnostics.Attach(this);
             //attempt to fix ampview on top issue
             if (psform != null && !psform.IsDisposed)
             {

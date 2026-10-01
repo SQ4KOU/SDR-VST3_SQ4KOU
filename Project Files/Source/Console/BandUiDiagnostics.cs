@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace Thetis;
 
@@ -35,8 +36,62 @@ internal static class BandUiDiagnostics
     private static volatile string _stage = "idle";
     private static volatile string _detail = "";
 
+    private static Control _uiControl;
+    private static System.Threading.Timer _uiPingTimer;
+    private static int _uiPingOutstanding;
+    private static long _uiPingPostedTicks;
+    private static long _lastUiStallReportTicks;
+
     public static string FilePath => LogPath;
     public static bool IsActive => Volatile.Read(ref _active) != 0;
+
+    public static void Attach(Control control)
+    {
+        try
+        {
+            if (control == null) return;
+            EnsureStarted();
+            _uiControl = control;
+            if (_uiPingTimer == null)
+                _uiPingTimer = new System.Threading.Timer(_ => QueueUiPing(), null, 250, 250);
+            Enqueue(Format("UI", "message-pump watchdog attached"));
+        }
+        catch { }
+    }
+
+    private static void QueueUiPing()
+    {
+        try
+        {
+            Control control = _uiControl;
+            if (control == null || control.IsDisposed || !control.IsHandleCreated) return;
+            if (Interlocked.CompareExchange(ref _uiPingOutstanding, 1, 0) != 0) return;
+            Interlocked.Exchange(ref _uiPingPostedTicks, Stopwatch.GetTimestamp());
+            control.BeginInvoke(new Action(UiPingArrived));
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _uiPingOutstanding, 0);
+        }
+    }
+
+    private static void UiPingArrived()
+    {
+        try
+        {
+            long posted = Interlocked.Read(ref _uiPingPostedTicks);
+            long now = Stopwatch.GetTimestamp();
+            double latencyMs = posted > 0 ? (now - posted) * 1000.0 / Stopwatch.Frequency : 0.0;
+            Interlocked.Exchange(ref _uiPingOutstanding, 0);
+            Interlocked.Exchange(ref _lastUiStallReportTicks, 0);
+            if (latencyMs >= 250.0)
+                Enqueue(Format("UI-PULSE", $"latency={latencyMs:F0}ms activeSeq={Interlocked.Read(ref _activeSequence)} stage={_stage}"));
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _uiPingOutstanding, 0);
+        }
+    }
 
     public static void Begin(string detail)
     {
@@ -165,6 +220,7 @@ internal static class BandUiDiagnostics
                     WriteBatch(Format("LOGGER", $"dropped={dropped}") + Environment.NewLine);
 
                 CheckWatchdog();
+                CheckUiWatchdog();
             }
             catch { }
         }
@@ -197,6 +253,20 @@ internal static class BandUiDiagnostics
             Environment.NewLine;
 
         WriteBatch(line);
+    }
+
+    private static void CheckUiWatchdog()
+    {
+        if (Volatile.Read(ref _uiPingOutstanding) == 0) return;
+        long posted = Interlocked.Read(ref _uiPingPostedTicks);
+        if (posted <= 0) return;
+        long now = Stopwatch.GetTimestamp();
+        double latencyMs = (now - posted) * 1000.0 / Stopwatch.Frequency;
+        if (latencyMs < 500.0) return;
+        long last = Interlocked.Read(ref _lastUiStallReportTicks);
+        if (last != 0 && (now - last) < Stopwatch.Frequency / 2) return;
+        Interlocked.Exchange(ref _lastUiStallReportTicks, now);
+        WriteBatch($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [UI-WATCHDOG] STALL latency={latencyMs:F0}ms activeSeq={Interlocked.Read(ref _activeSequence)} stage={_stage}" + Environment.NewLine);
     }
 
     private static void WriteBatch(string text)
