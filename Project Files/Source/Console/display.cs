@@ -277,6 +277,8 @@ namespace Thetis
         private static float[][] _3dEnvelopeMedianTX;
         private static int _3dEnvelopeMedianRXCount;
         private static int _3dEnvelopeMedianTXCount;
+        private static float[] _3dEnvelopeSpectralScratchRX;
+        private static float[] _3dEnvelopeSpectralScratchTX;
 
         // 3D panadapter perspective constants (matched to AetherSDR DssRenderer)
         private static float _pan3DPerspective = 0.60f;   // back rows = 60% of front width (kBackWidthFrac)
@@ -572,6 +574,22 @@ namespace Thetis
             set { _pan3DEnvelopeDecayDbPerSec = Math.Max(1.0f, Math.Min(200.0f, value)); }
         }
 
+        private static int _pan3DEnvelopeWidth = 9;
+        public static int Pan3DEnvelopeWidth
+        {
+            get { return _pan3DEnvelopeWidth; }
+            set
+            {
+                int v = Math.Max(1, Math.Min(31, value));
+                if ((v & 1) == 0) v++; // centred odd-width window
+                if (_pan3DEnvelopeWidth != v)
+                {
+                    _pan3DEnvelopeWidth = v;
+                    ResetPan3DEnvelopeState();
+                }
+            }
+        }
+
         private static void ResetPan3DEnvelopeState()
         {
             _3dEnvelopeRXValid = false;
@@ -622,6 +640,7 @@ namespace Thetis
             bool envValid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
             long lastTicks = tx ? _3dEnvelopeTXLastTicks : _3dEnvelopeRXLastTicks;
             float[][] envMed = tx ? _3dEnvelopeMedianTX : _3dEnvelopeMedianRX;
+            float[] spectralScratch = tx ? _3dEnvelopeSpectralScratchTX : _3dEnvelopeSpectralScratchRX;
             int envMedCount = tx ? _3dEnvelopeMedianTXCount : _3dEnvelopeMedianRXCount;
             bool useEnvelopeMedian = envMedCount >= 2 && envMed != null &&
                 envMed[0] != null && envMed[0].Length >= cols &&
@@ -632,6 +651,13 @@ namespace Thetis
                 env = new float[cols];
                 envValid = false;
                 if (tx) _3dEnvelopeTX = env; else _3dEnvelopeRX = env;
+            }
+
+            if (spectralScratch == null || spectralScratch.Length < cols)
+            {
+                spectralScratch = new float[cols];
+                if (tx) _3dEnvelopeSpectralScratchTX = spectralScratch;
+                else _3dEnvelopeSpectralScratchRX = spectralScratch;
             }
 
             double dt = envValid && lastTicks > 0 ? (nowTicks - lastTicks) / 10000000.0 : 0.0;
@@ -653,23 +679,40 @@ namespace Thetis
                     sample = source[c];
                 }
 
-                // Spectrum mode keeps the exact historical input used before this
-                // feature. Envelope uses its own RX/TX median history so MOX
-                // transitions cannot contaminate the first envelope samples.
+                // Spectrum mode keeps the exact historical input used before this feature.
                 hist[head][c] = sample;
 
-                float envelopeSample;
+                // Envelope starts from an RX/TX-isolated temporal median. The spatial
+                // upper-envelope pass below is what intentionally makes its geometry
+                // visibly different from the raw spectrum.
                 if (useEnvelopeMedian)
                 {
                     float ea = source[c];
                     float eb = envMed[0][c];
                     float ed = envMed[1][c];
-                    envelopeSample = Math.Max(Math.Min(ea, eb), Math.Min(Math.Max(ea, eb), ed));
+                    spectralScratch[c] = Math.Max(Math.Min(ea, eb), Math.Min(Math.Max(ea, eb), ed));
                 }
                 else
                 {
-                    envelopeSample = source[c];
+                    spectralScratch[c] = source[c];
                 }
+            }
+
+            // Spectral upper envelope: local peak window across frequency. Blending
+            // the local maximum with the centre bin preserves narrow-signal position
+            // while suppressing the jagged FFT "grass". The temporal follower is
+            // applied afterwards, so this is a true frequency-domain envelope rather
+            // than only a per-bin peak hold.
+            int radius = Math.Max(0, (_pan3DEnvelopeWidth - 1) / 2);
+            for (int c = 0; c < cols; c++)
+            {
+                int lo = Math.Max(0, c - radius);
+                int hi = Math.Min(cols - 1, c + radius);
+                float localPeak = spectralScratch[c];
+                for (int k = lo; k <= hi; k++)
+                    if (spectralScratch[k] > localPeak) localPeak = spectralScratch[k];
+
+                float envelopeSample = spectralScratch[c] * 0.30f + localPeak * 0.70f;
 
                 float e;
                 if (!envValid)
@@ -839,6 +882,7 @@ namespace Thetis
                                 Pan3DSource = val == "Envelope" ? Pan3DSourceMode.Envelope : Pan3DSourceMode.Spectrum;
                                 break;
                             case "ud3DEnvelopeDecay": Pan3DEnvelopeDecayDbPerSec = float.Parse(val); break;
+                            case "ud3DEnvelopeWidth": Pan3DEnvelopeWidth = int.Parse(val); break;
                             case "clrbtn3DLineColor":
                                 {
                                     string[] c = val.Split('.');
