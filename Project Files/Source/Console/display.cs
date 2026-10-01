@@ -261,8 +261,18 @@ namespace Thetis
         public const int Max3DHistoryLines = 240;
         public const int Max3DLinesSoftwareRender = 15; // WARP rasterises every stroke on the CPU, keep the row count sane
         private static float[][] _3dHistoryBuffer;
+        private static float[][] _3dEnvelopeHistoryBuffer; // parallel history fed from the envelope follower
         private static int _3dHistoryCount;
         private static int _3dHistoryHead;
+
+        // 3D envelope state is deliberately separate for RX and TX so a strong TX
+        // ridge can never bleed into RX after MOX is released (and vice versa).
+        private static float[] _3dEnvelopeRX;
+        private static float[] _3dEnvelopeTX;
+        private static bool _3dEnvelopeRXValid;
+        private static bool _3dEnvelopeTXValid;
+        private static long _3dEnvelopeRXLastTicks;
+        private static long _3dEnvelopeTXLastTicks;
 
         // 3D panadapter perspective constants (matched to AetherSDR DssRenderer)
         private static float _pan3DPerspective = 0.60f;   // back rows = 60% of front width (kBackWidthFrac)
@@ -538,6 +548,150 @@ namespace Thetis
             set { pan_fill_color = value; }
         }
 
+        public enum Pan3DSourceMode
+        {
+            Spectrum = 0,
+            Envelope = 1
+        }
+
+        private static Pan3DSourceMode _pan3DSource = Pan3DSourceMode.Spectrum;
+        public static Pan3DSourceMode Pan3DSource
+        {
+            get { return _pan3DSource; }
+            set { _pan3DSource = value == Pan3DSourceMode.Envelope ? Pan3DSourceMode.Envelope : Pan3DSourceMode.Spectrum; }
+        }
+
+        private static float _pan3DEnvelopeDecayDbPerSec = 30.0f;
+        public static float Pan3DEnvelopeDecayDbPerSec
+        {
+            get { return _pan3DEnvelopeDecayDbPerSec; }
+            set { _pan3DEnvelopeDecayDbPerSec = Math.Max(1.0f, Math.Min(200.0f, value)); }
+        }
+
+        private static void ResetPan3DEnvelopeState()
+        {
+            _3dEnvelopeRXValid = false;
+            _3dEnvelopeTXValid = false;
+            _3dEnvelopeRXLastTicks = 0;
+            _3dEnvelopeTXLastTicks = 0;
+        }
+
+        private static float[][] ActivePan3DHistory()
+        {
+            if (_pan3DSource == Pan3DSourceMode.Envelope && _3dEnvelopeHistoryBuffer != null)
+                return _3dEnvelopeHistoryBuffer;
+            return _3dHistoryBuffer;
+        }
+
+        private static float[] Pan3DLiveRenderData(float[] fallback, int requiredLength, bool tx)
+        {
+            if (_pan3DSource != Pan3DSourceMode.Envelope) return fallback;
+
+            float[] env = tx ? _3dEnvelopeTX : _3dEnvelopeRX;
+            bool valid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
+            return valid && env != null && env.Length >= requiredLength ? env : fallback;
+        }
+
+        private static void PushPan3DFrame(float[] source, int cols, bool tx, long nowTicks)
+        {
+            float[][] hist = _3dHistoryBuffer;
+            float[][] envHist = _3dEnvelopeHistoryBuffer;
+            float[][] med = _3dMedianPrev;
+            int head = _3dHistoryHead;
+
+            if (source == null || cols < 1 || hist == null || envHist == null || med == null ||
+                head < 0 || head >= Max3DHistoryLines)
+                return;
+
+            if (hist[head] == null || hist[head].Length < cols)
+                hist[head] = new float[cols];
+            if (envHist[head] == null || envHist[head].Length < cols)
+                envHist[head] = new float[cols];
+
+            bool useMedian = _3dMedianCount >= 2 &&
+                med[0] != null && med[0].Length >= cols &&
+                med[1] != null && med[1].Length >= cols;
+
+            float[] env = tx ? _3dEnvelopeTX : _3dEnvelopeRX;
+            bool envValid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
+            long lastTicks = tx ? _3dEnvelopeTXLastTicks : _3dEnvelopeRXLastTicks;
+
+            if (env == null || env.Length < cols)
+            {
+                env = new float[cols];
+                envValid = false;
+                if (tx) _3dEnvelopeTX = env; else _3dEnvelopeRX = env;
+            }
+
+            double dt = envValid && lastTicks > 0 ? (nowTicks - lastTicks) / 10000000.0 : 0.0;
+            if (dt < 0.0) dt = 0.0;
+            float decay = _pan3DEnvelopeDecayDbPerSec * (float)dt;
+
+            for (int c = 0; c < cols; c++)
+            {
+                float sample;
+                if (useMedian)
+                {
+                    float a = source[c];
+                    float b = med[0][c];
+                    float d = med[1][c];
+                    sample = Math.Max(Math.Min(a, b), Math.Min(Math.Max(a, b), d));
+                }
+                else
+                {
+                    sample = source[c];
+                }
+
+                // Spectrum mode keeps the exact historical input used before this
+                // feature. Envelope adds instantaneous attack and time-based decay.
+                hist[head][c] = sample;
+
+                float e;
+                if (!envValid)
+                {
+                    e = sample;
+                }
+                else if (sample >= env[c])
+                {
+                    e = sample; // instantaneous attack
+                }
+                else
+                {
+                    e = Math.Max(sample, env[c] - decay);
+                }
+
+                env[c] = e;
+                envHist[head][c] = e;
+            }
+
+            // Shift the existing temporal-median history exactly as the original
+            // Spectrum path did; both Spectrum and Envelope are fed from this same
+            // impulse-rejected sample.
+            if (med[1] == null || med[1].Length < cols)
+                med[1] = new float[cols];
+            if (med[0] != null && med[0].Length >= cols)
+                Array.Copy(med[0], med[1], cols);
+            if (med[0] == null || med[0].Length < cols)
+                med[0] = new float[cols];
+            Array.Copy(source, med[0], cols);
+            if (_3dMedianCount < int.MaxValue) _3dMedianCount++;
+
+            if (tx)
+            {
+                _3dEnvelopeTXValid = true;
+                _3dEnvelopeTXLastTicks = nowTicks;
+            }
+            else
+            {
+                _3dEnvelopeRXValid = true;
+                _3dEnvelopeRXLastTicks = nowTicks;
+            }
+
+            _3dHistoryHead = (head + 1) % Max3DHistoryLines;
+            if (_3dHistoryCount < Max3DHistoryLines) _3dHistoryCount++;
+            _3dLastPushTicks = nowTicks;
+        }
+
         private static bool _pan3DEnabled = false;
         public static bool Pan3DEnabled
         {
@@ -550,6 +704,7 @@ namespace Thetis
                     _3dHistoryCount = 0;
                     _3dHistoryHead = 0;
                     _3dMedianCount = 0;
+                    ResetPan3DEnvelopeState();
                 }
             }
         }
@@ -638,6 +793,10 @@ namespace Thetis
                             case "ud3DLineCount": Pan3DLineCount = int.Parse(val); break;
                             case "ud3DZCurve": Pan3DZCurve = float.Parse(val); break;
                             case "ud3DSpeed": Pan3DSpeed = int.Parse(val); break;
+                            case "combo3DSource":
+                                Pan3DSource = val == "Envelope" ? Pan3DSourceMode.Envelope : Pan3DSourceMode.Spectrum;
+                                break;
+                            case "ud3DEnvelopeDecay": Pan3DEnvelopeDecayDbPerSec = float.Parse(val); break;
                             case "clrbtn3DLineColor":
                                 {
                                     string[] c = val.Split('.');
@@ -3826,8 +3985,15 @@ namespace Thetis
                     for (int i = 0; i < Max3DHistoryLines; i++)
                         histBuf[i] = new float[1]; // will be resized on first use
                     _3dHistoryBuffer = histBuf;
+
+                    float[][] envelopeHistBuf = new float[Max3DHistoryLines][];
+                    for (int i = 0; i < Max3DHistoryLines; i++)
+                        envelopeHistBuf[i] = new float[1];
+                    _3dEnvelopeHistoryBuffer = envelopeHistBuf;
+
                     _3dHistoryCount = 0;
                     _3dHistoryHead = 0;
+                    ResetPan3DEnvelopeState();
 
                     // initialize 3D temporal median filter buffers
                     float[][] medBuf = new float[2][];
@@ -5790,75 +5956,18 @@ namespace Thetis
                     if (_pan3DEnabled && _3dHistoryBuffer != null &&
                         (nowTicks - _3dLastPushTicks >= effectiveInterval))
                     {
-                        // snapshot the ring/median arrays and head — the DX2 setup path can swap
-                        // these on another thread mid-push; working purely on locals guarantees the
-                        // length guard and the copy see the SAME buffers.
-                        // NOTE: copies are done with Array.Copy (bounds-checked) rather than
-                        // Win32.memcpy on purpose — any inconsistency surfaces as a catchable,
-                        // loggable exception instead of silent native memory corruption.
-                        float[][] hist = _3dHistoryBuffer;
-                        float[][] med = _3dMedianPrev;
-                        int head = _3dHistoryHead;
-
-                        if (hist != null && med != null && head >= 0 && head < Max3DHistoryLines)
+                        try
                         {
-                            try
-                            {
-                                if (hist[head] == null || hist[head].Length < nDecimatedWidth)
-                                {
-                                    hist[head] = new float[nDecimatedWidth];
-                                }
-
-                                // temporal median filter (impulse rejection)
-                                bool useMedian = _3dMedianCount >= 2 &&
-                                    med[0] != null && med[0].Length >= nDecimatedWidth &&
-                                    med[1] != null && med[1].Length >= nDecimatedWidth;
-
-                                if (useMedian)
-                                {
-                                    for (int c = 0; c < nDecimatedWidth; c++)
-                                    {
-                                        float a = new_display_data[c];
-                                        float b = med[0][c];
-                                        float d = med[1][c];
-                                        // median of 3
-                                        hist[head][c] =
-                                            Math.Max(Math.Min(a, b), Math.Min(Math.Max(a, b), d));
-                                    }
-                                }
-                                else
-                                {
-                                    Array.Copy(new_display_data, hist[head], nDecimatedWidth);
-                                }
-
-                                // shift median history
-                                if (med[1] == null || med[1].Length < nDecimatedWidth)
-                                    med[1] = new float[nDecimatedWidth];
-                                if (med[0] != null && med[0].Length >= nDecimatedWidth)
-                                {
-                                    Array.Copy(med[0], med[1], nDecimatedWidth);
-                                }
-                                if (med[0] == null || med[0].Length < nDecimatedWidth)
-                                    med[0] = new float[nDecimatedWidth];
-                                Array.Copy(new_display_data, med[0], nDecimatedWidth);
-                                if (_3dMedianCount < int.MaxValue) _3dMedianCount++;
-
-                                _3dHistoryHead = (head + 1) % Max3DHistoryLines;
-                                if (_3dHistoryCount < Max3DHistoryLines) _3dHistoryCount++;
-                                _3dLastPushTicks = nowTicks;
-                            }
-                            catch (Exception ex)
-                            {
-                                // never let a push anomaly kill the display thread — log and skip this push
-                                Common.LogString("3D panadapter history push skipped — " +
-                                    $"nDecimatedWidth={nDecimatedWidth} " +
-                                    $"new_display_data={(new_display_data == null ? "null" : new_display_data.Length.ToString())} " +
-                                    $"hist[head]={((hist[head] == null) ? "null" : hist[head].Length.ToString())} " +
-                                    $"med0={(med[0] == null ? "null" : med[0].Length.ToString())} " +
-                                    $"med1={(med[1] == null ? "null" : med[1].Length.ToString())} " +
-                                    $"W={W} decim={m_nDecimation}");
-                                Common.LogException(ex);
-                            }
+                            PushPan3DFrame(new_display_data, nDecimatedWidth, local_mox, nowTicks);
+                        }
+                        catch (Exception ex)
+                        {
+                            // never let a push anomaly kill the display thread — log and skip this push
+                            Common.LogString("3D panadapter history push skipped — " +
+                                $"nDecimatedWidth={nDecimatedWidth} " +
+                                $"new_display_data={(new_display_data == null ? "null" : new_display_data.Length.ToString())} " +
+                                $"W={W} decim={m_nDecimation} source={_pan3DSource}");
+                            Common.LogException(ex);
                         }
                     }
                 }
@@ -5911,6 +6020,13 @@ namespace Thetis
                 data = current_display_data_bottom;
                 dataCopy = current_display_data_bottom_copy;
             }
+
+            // In Envelope mode only the visual 3D crest/surface changes source.
+            // Peak detection, noise-floor calculations and the normal 2D display
+            // continue to use the original Spectrum data.
+            float[] renderData = draw3DHistory && rx == 1
+                ? Pan3DLiveRenderData(data, nDecimatedWidth, local_mox)
+                : data;
 
             dBmSpectralPeakFall /= (float)m_nFps;
 
@@ -5975,7 +6091,7 @@ namespace Thetis
 
             // calc start pos
             int Y;
-            max = data[0] + fOffset;
+            max = renderData[0] + fOffset;
             Y = (int)((grid_max - max) * dbmToPixel - 0.5f) + nVerticalShift;// -0.5 to mimic floor
 
             bool bIgnoringPoints = false;
@@ -6149,7 +6265,7 @@ namespace Thetis
                     (draw3DHistory || bSpecFillMesh || !pan_fill))
                 {
                     bOverlayMesh = TryRenderSpectrumOverlayMesh(rx, nVerticalShift, W, H,
-                        nDecimatedWidth, data, fOffset, grid_min, grid_max, spectralPeaks,
+                        nDecimatedWidth, renderData, fOffset, grid_min, grid_max, spectralPeaks,
                         bSpectralPeakHold, bActivePeakFill, line_width,
                         live3DMapping, live3DBottomY, live3DRidge, live3DZCurve);
                     if (bOverlayMesh)
@@ -6160,7 +6276,8 @@ namespace Thetis
                 {
                     point.X = i * local_Decimation;
 
-                    max = data[i] + fOffset;
+                    float analysisMax = data[i] + fOffset;
+                    max = renderData[i] + fOffset;
                     max_copy = dataCopy[i] + fOffset;
 
                     // noise floor
@@ -6183,31 +6300,46 @@ namespace Thetis
                     }
                     point.Y = Y;
 
-                    if (max > local_max_y)
+                    int analysisY = Y;
+                    if (!ReferenceEquals(renderData, data))
                     {
-                        // store peak
-                        local_max_y = max;
+                        if (live3DMapping)
+                        {
+                            float sAnalysis = (analysisMax - grid_min) / (float)yRange;
+                            if (sAnalysis < 0) sAnalysis = 0; else if (sAnalysis > 1) sAnalysis = 1;
+                            analysisY = (int)(live3DBottomY - Math.Pow(sAnalysis, live3DZCurve) * live3DRidge - 0.5f);
+                        }
+                        else
+                        {
+                            analysisY = (int)((grid_max - analysisMax) * dbmToPixel - 0.5f) + nVerticalShift;
+                        }
+                    }
+
+                    if (analysisMax > local_max_y)
+                    {
+                        // store peak from the unmodified Spectrum source
+                        local_max_y = analysisMax;
                         local_max_x = point.X;
-                        local_max_Pixel_y = Y;
+                        local_max_Pixel_y = analysisY;
                     }
 
                     // peak blobs
                     if (peaks_imds && (!m_bInsideFilterOnly || (point.X >= filter_left_x && point.X <= filter_right_x) || show_imd_measurements))
                     {
-                        if (max > dbm_max)
+                        if (analysisMax > dbm_max)
                         {
-                            dbm_max = max;
-                            dbm_max_ypos = Y;
+                            dbm_max = analysisMax;
+                            dbm_max_ypos = analysisY;
                             dbm_max_xpos = i;
                         }
-                        if (max < dbm_min)
+                        if (analysisMax < dbm_min)
                         {
-                            dbm_min = max;
+                            dbm_min = analysisMax;
                             dbm_min_xpos = i;
                         }
                         if (look_for_max)
                         {
-                            if (max < dbm_max - trigger_delta)
+                            if (analysisMax < dbm_max - trigger_delta)
                             {
                                 if (show_imd_measurements)
                                 {
@@ -6224,15 +6356,15 @@ namespace Thetis
                                 {
                                     processMaximums(rx, dbm_max, dbm_max_xpos, dbm_max_ypos);
                                 }
-                                dbm_min = max;
+                                dbm_min = analysisMax;
                                 dbm_min_xpos = i;
                                 look_for_max = false;
                             }
                         }
-                        else if (max > dbm_min + trigger_delta)
+                        else if (analysisMax > dbm_min + trigger_delta)
                         {
-                            dbm_max = max;
-                            dbm_max_ypos = Y;
+                            dbm_max = analysisMax;
+                            dbm_max_ypos = analysisY;
                             dbm_max_xpos = i;
                             look_for_max = true;
                         }
@@ -6453,13 +6585,13 @@ namespace Thetis
                     {
                         ref Maximums peak = ref spectralPeaks[i];
 
-                        if (max >= peak.max_dBm)
+                        if (analysisMax >= peak.max_dBm)
                         {
-                            peak.max_dBm = max;
+                            peak.max_dBm = analysisMax;
                             peak.Time = local_frame_start;
                         }
 
-                        if (peak.max_dBm >= max)
+                        if (peak.max_dBm >= analysisMax)
                         {
                             // draw to peak, but re-work Y as we might rescale the spectrum vertically
                             spectralPeakPoint.X = point.X;
@@ -6953,7 +7085,7 @@ namespace Thetis
             // snapshot ring state once per frame — the DX2 setup path can swap the buffer
             // arrays concurrently; mixing old/new references mid-frame would risk an
             // unhandled exception on this (display) thread, which terminates the process
-            float[][] histBuf = _3dHistoryBuffer;
+            float[][] histBuf = ActivePan3DHistory();
             int histHead = _3dHistoryHead;
             int histCount = _3dHistoryCount;
             if (!_pan3DEnabled || histBuf == null || histCount < 2) return;
