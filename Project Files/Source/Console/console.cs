@@ -6055,10 +6055,13 @@ namespace Thetis
             if (oldBand != RX1Band ||
                 oldFreq != VFOAFreq // or if the freq changes
                 )
+            {
                 BandUiDiagnostics.Stage("SetBand.SetBandChangeHandlers.Invoke", $"old={oldBand} new={RX1Band}");
                 SetBandChangeHanders?.Invoke(1, oldBand, RX1Band, oldMode, RX1DSPMode, oldFilter, RX1Filter, oldFreq, VFOAFreq,
                     oldCentreFreq, CentreFrequency, oldCtun, ClickTuneDisplay, oldZoomSlider, ptbDisplayZoom.Value);
-                    BandUiDiagnostics.Stage("SetBand.exit", $"band={RX1Band} freq={VFOAFreq:F6}");
+            }
+
+            BandUiDiagnostics.Stage("SetBand.exit", $"band={RX1Band} freq={VFOAFreq:F6}");
         }
 
         // ke9ns add 3-arg SetBand convenience overload for the Scanner
