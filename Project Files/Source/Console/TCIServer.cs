@@ -813,23 +813,17 @@ namespace Thetis
             get
             {
                 Console c = _console;
-                if (c == null || c.IsDisposed || c.Disposing || !c.IsHandleCreated) return null;
+                if (c == null || c.IsDisposed || c.Disposing) return null;
 
-                try
-                {
-                    if (c.InvokeRequired)
-                        return (Console)c.Invoke(new Func<Console>(() => c.ThreadSafeTCIAccessor));
-
-                    return c.ThreadSafeTCIAccessor;
-                }
-                catch (ObjectDisposedException)
-                {
-                    return null;
-                }
-                catch (InvalidOperationException)
-                {
-                    return null;
-                }
+                // Do not marshal this accessor through Control.Invoke().
+                // ThreadSafeTCIAccessor only returns the Console reference; the
+                // actual property reads happen on the calling TCI worker thread
+                // after this getter returns. Synchronous Invoke therefore did
+                // not make those reads thread-safe, but it did serialize the
+                // TCI VFO/sensor workers through the WinForms message pump.
+                // Under VFO/band traffic this caused multi-second UI stalls and
+                // during shutdown it could Invoke on an already disposed Console.
+                return c.ThreadSafeTCIAccessor;
             }
         }
         //
@@ -2640,15 +2634,18 @@ namespace Thetis
 		}
 		private void sendDDS(int rx, long ddsFreq = -1)
         {
+            Console c = consoleThreadSafe;
+            if (c == null || m_stopClient || m_disconnected) return;
+
 			if (ddsFreq == -1)
 			{
 				if (rx == 0)
-					ddsFreq = (long)(consoleThreadSafe.CentreFrequency * 1e6);
+					ddsFreq = (long)(c.CentreFrequency * 1e6);
 				else if (rx == 1)
-					ddsFreq = (long)(consoleThreadSafe.CentreRX2Frequency * 1e6);
+					ddsFreq = (long)(c.CentreRX2Frequency * 1e6);
 			}
 
-			ddsFreq += consoleThreadSafe.GetDSPcwPitchShiftToZero(rx+1); //MW0LGE [2.9.0.7]
+			ddsFreq += c.GetDSPcwPitchShiftToZero(rx+1); //MW0LGE [2.9.0.7]
 
             string s = "dds:" + rx.ToString() + "," + ddsFreq.ToString() + ";";
 			sendTextFrame(s);
