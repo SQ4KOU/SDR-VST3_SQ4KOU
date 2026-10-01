@@ -52,6 +52,10 @@ namespace Thetis
         private ComboBoxTS combo3DColorMap;
         private LabelTS lbl3DZCurve;
         private NumericUpDownTS ud3DZCurve;
+        private LabelTS lbl3DSource;
+        private ComboBoxTS combo3DSource;
+        private LabelTS lbl3DEnvelopeDecay;
+        private NumericUpDownTS ud3DEnvelopeDecay;
         private ButtonTS btn3DResetDefaults;
 
         public frm3DPanadapter()
@@ -129,6 +133,10 @@ namespace Thetis
             this.combo3DColorMap = new System.Windows.Forms.ComboBoxTS();
             this.lbl3DZCurve = new System.Windows.Forms.LabelTS();
             this.ud3DZCurve = new System.Windows.Forms.NumericUpDownTS();
+            this.lbl3DSource = new System.Windows.Forms.LabelTS();
+            this.combo3DSource = new System.Windows.Forms.ComboBoxTS();
+            this.lbl3DEnvelopeDecay = new System.Windows.Forms.LabelTS();
+            this.ud3DEnvelopeDecay = new System.Windows.Forms.NumericUpDownTS();
             this.btn3DResetDefaults = new System.Windows.Forms.ButtonTS();
             this.SuspendLayout();
             //
@@ -406,13 +414,59 @@ namespace Thetis
             this.ud3DZCurve.Value = 0.90m;
             this.ud3DZCurve.ValueChanged += new System.EventHandler(this.ud3DZCurve_ValueChanged);
             //
+            // lbl3DSource
+            //
+            this.lbl3DSource.Image = null;
+            this.lbl3DSource.Location = new System.Drawing.Point(12, 306);
+            this.lbl3DSource.Name = "lbl3DSource";
+            this.lbl3DSource.Size = new System.Drawing.Size(90, 16);
+            this.lbl3DSource.TabIndex = 22;
+            this.lbl3DSource.Text = "3D Source:";
+            //
+            // combo3DSource
+            //
+            this.combo3DSource.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.combo3DSource.Items.AddRange(new object[] {
+                "Spectrum",
+                "Envelope"});
+            this.combo3DSource.Location = new System.Drawing.Point(120, 303);
+            this.combo3DSource.Name = "combo3DSource";
+            this.combo3DSource.Size = new System.Drawing.Size(100, 21);
+            this.combo3DSource.TabIndex = 23;
+            this.combo3DSource.SelectedIndex = 0;
+            this.toolTip1.SetToolTip(this.combo3DSource, "Select the existing spectrum history or envelope-followed 3D rendering.");
+            this.combo3DSource.SelectedIndexChanged += new System.EventHandler(this.combo3DSource_SelectedIndexChanged);
+            //
+            // lbl3DEnvelopeDecay
+            //
+            this.lbl3DEnvelopeDecay.Image = null;
+            this.lbl3DEnvelopeDecay.Location = new System.Drawing.Point(12, 332);
+            this.lbl3DEnvelopeDecay.Name = "lbl3DEnvelopeDecay";
+            this.lbl3DEnvelopeDecay.Size = new System.Drawing.Size(105, 16);
+            this.lbl3DEnvelopeDecay.TabIndex = 24;
+            this.lbl3DEnvelopeDecay.Text = "Env Decay dB/s:";
+            //
+            // ud3DEnvelopeDecay
+            //
+            this.ud3DEnvelopeDecay.DecimalPlaces = 1;
+            this.ud3DEnvelopeDecay.Increment = 5.0m;
+            this.ud3DEnvelopeDecay.Location = new System.Drawing.Point(120, 329);
+            this.ud3DEnvelopeDecay.Maximum = 200.0m;
+            this.ud3DEnvelopeDecay.Minimum = 1.0m;
+            this.ud3DEnvelopeDecay.Name = "ud3DEnvelopeDecay";
+            this.ud3DEnvelopeDecay.Size = new System.Drawing.Size(70, 20);
+            this.ud3DEnvelopeDecay.TabIndex = 25;
+            this.ud3DEnvelopeDecay.Value = 30.0m;
+            this.toolTip1.SetToolTip(this.ud3DEnvelopeDecay, "Envelope release rate in dB per second. Attack is instantaneous.");
+            this.ud3DEnvelopeDecay.ValueChanged += new System.EventHandler(this.ud3DEnvelopeDecay_ValueChanged);
+            //
             // btn3DResetDefaults
             //
             this.btn3DResetDefaults.Image = null;
-            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 315);
+            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 365);
             this.btn3DResetDefaults.Name = "btn3DResetDefaults";
             this.btn3DResetDefaults.Size = new System.Drawing.Size(208, 26);
-            this.btn3DResetDefaults.TabIndex = 22;
+            this.btn3DResetDefaults.TabIndex = 26;
             this.btn3DResetDefaults.Text = "Reset Defaults";
             this.toolTip1.SetToolTip(this.btn3DResetDefaults, "Reset all 3D panadapter settings to defaults.");
             this.btn3DResetDefaults.Click += new System.EventHandler(this.btn3DResetDefaults_Click);
@@ -421,7 +475,7 @@ namespace Thetis
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(232, 353);
+            this.ClientSize = new System.Drawing.Size(232, 403);
             this.Controls.Add(this.chk3DWaterfallSync);
             this.Controls.Add(this.chk3DSideWalls);
             this.Controls.Add(this.lbl3DXOffset);
@@ -445,6 +499,10 @@ namespace Thetis
             this.Controls.Add(this.combo3DColorMap);
             this.Controls.Add(this.lbl3DZCurve);
             this.Controls.Add(this.ud3DZCurve);
+            this.Controls.Add(this.lbl3DSource);
+            this.Controls.Add(this.combo3DSource);
+            this.Controls.Add(this.lbl3DEnvelopeDecay);
+            this.Controls.Add(this.ud3DEnvelopeDecay);
             this.Controls.Add(this.btn3DResetDefaults);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -469,11 +527,23 @@ namespace Thetis
             Display.Pan3DLineCount = (int)ud3DLineCount.Value;
             Display.Pan3DZCurve = (float)ud3DZCurve.Value;
             Display.Pan3DSpeed = (int)ud3DSpeed.Value;
+            Display.Pan3DSource = combo3DSource.SelectedIndex == 1
+                ? Display.Pan3DSourceMode.Envelope
+                : Display.Pan3DSourceMode.Spectrum;
+            Display.Pan3DEnvelopeDecayDbPerSec = (float)ud3DEnvelopeDecay.Value;
             Display.Pan3DLineColor = clrbtn3DLineColor.Color;
             Display.Pan3DFillColorEnabled = chk3DFillColorEnable.Checked;
             Display.Pan3DFillColor = clrbtn3DFillColor.Color;
             Display.Pan3DFillAlpha = tb3DFillOpacity.Value / 100f;
             Display.Pan3DColorMap = Math.Max(0, combo3DColorMap.SelectedIndex);
+            UpdateEnvelopeUiState();
+        }
+
+        private void UpdateEnvelopeUiState()
+        {
+            bool enabled = combo3DSource.SelectedIndex == 1;
+            lbl3DEnvelopeDecay.Enabled = enabled;
+            ud3DEnvelopeDecay.Enabled = enabled;
         }
 
         private void frm3DPanadapter_FormClosing(object sender, FormClosingEventArgs e)
@@ -542,6 +612,21 @@ namespace Thetis
             Display.Pan3DSpeed = (int)ud3DSpeed.Value;
         }
 
+        private void combo3DSource_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateEnvelopeUiState();
+            if (_initializing) return;
+            Display.Pan3DSource = combo3DSource.SelectedIndex == 1
+                ? Display.Pan3DSourceMode.Envelope
+                : Display.Pan3DSourceMode.Spectrum;
+        }
+
+        private void ud3DEnvelopeDecay_ValueChanged(object sender, EventArgs e)
+        {
+            if (_initializing) return;
+            Display.Pan3DEnvelopeDecayDbPerSec = (float)ud3DEnvelopeDecay.Value;
+        }
+
         private void clrbtn3DLineColor_Changed(object sender, EventArgs e)
         {
             if (_initializing) return;
@@ -585,6 +670,8 @@ namespace Thetis
             ud3DLineCount.Value = 35;
             ud3DSpeed.Value = 25;
             ud3DZCurve.Value = 0.90m;
+            combo3DSource.SelectedIndex = 0;
+            ud3DEnvelopeDecay.Value = 30.0m;
             clrbtn3DLineColor.Color = Color.Aquamarine;
             chk3DFillColorEnable.Checked = false;
             clrbtn3DFillColor.Color = Color.Aquamarine;
