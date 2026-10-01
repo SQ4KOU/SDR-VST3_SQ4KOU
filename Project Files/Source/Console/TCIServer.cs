@@ -8262,7 +8262,8 @@ namespace Thetis
                 foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
                 {
                     socketListener.TXFrequencyChange(vfod);
-                    // A TX band/VFO/SPLIT change can select another antenna while still in RX.\n                    // Cache only; the 250 ms socket worker publishes it off the callback path.
+                    // A TX band/VFO/SPLIT change can select another antenna while still in RX.
+                    // Cache only; the 250 ms socket worker publishes it off the callback path.
                     socketListener.SQ4KOUCacheTXBand(new_band);
                 }
             }
