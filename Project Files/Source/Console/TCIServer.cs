@@ -2648,7 +2648,7 @@ namespace Thetis
 					ddsFreq = (long)(consoleThreadSafe.CentreRX2Frequency * 1e6);
 			}
 
-			ddsFreq += c.GetDSPcwPitchShiftToZero(rx+1); //MW0LGE [2.9.0.7]
+			ddsFreq += consoleThreadSafe.GetDSPcwPitchShiftToZero(rx+1); //MW0LGE [2.9.0.7]
 
             string s = "dds:" + rx.ToString() + "," + ddsFreq.ToString() + ";";
 			sendTextFrame(s);
@@ -3295,8 +3295,7 @@ namespace Thetis
 		}
 		public void StopSocketListener()
 		{
-            // Stop all background producers before touching sockets or the UI.
-            // VFOdata now owns a real dedicated thread, so Join below waits for it.
+            // Stop background TCI producers before the WinForms Console can be disposed.
             m_disconnected = true;
             m_stopClient = true;
             m_outboundFrameEvent.Set();
@@ -4006,13 +4005,13 @@ namespace Thetis
 						vfo = Math.Round(vfo, 6);
 						if (chan == 0)
 						{
-							if (c.VFOAFreq != vfo)
-								c.VFOAFreq = vfo;
+							if (consoleThreadSafe.VFOAFreq != vfo)
+								consoleThreadSafe.VFOAFreq = vfo;
 						}
 						else if (chan == 1)
 						{
-							if (c.VFOBFreq != vfo)
-								c.VFOBFreq = vfo;
+							if (consoleThreadSafe.VFOBFreq != vfo)
+								consoleThreadSafe.VFOBFreq = vfo;
 						}
 					}
 					else if (rx == 1)
@@ -4023,13 +4022,13 @@ namespace Thetis
 							vfo = Math.Round(vfo, 6);
 							if (chan == 0)
 							{
-								if (c.VFOBFreq != vfo)
-									c.VFOBFreq = vfo;
+								if (consoleThreadSafe.VFOBFreq != vfo)
+									consoleThreadSafe.VFOBFreq = vfo;
 							}
 							else if (chan == 1)
 							{
-								if (c.VFOBFreq != vfo)
-									c.VFOBFreq = vfo;
+								if (consoleThreadSafe.VFOBFreq != vfo)
+									consoleThreadSafe.VFOBFreq = vfo;
 							}
 						}
 					}
@@ -4051,11 +4050,11 @@ namespace Thetis
 					{
 						if (chan == 0)
 						{
-							dIF = c.VFOAFreq - consoleThreadSafe.CentreFrequency;
+							dIF = consoleThreadSafe.VFOAFreq - consoleThreadSafe.CentreFrequency;
 						}
 						else if (chan == 1)
 						{
-							dIF = c.VFOBFreq - consoleThreadSafe.CentreFrequency;
+							dIF = consoleThreadSafe.VFOBFreq - consoleThreadSafe.CentreFrequency;
 						}
 					}
 					else if (rx == 1)
@@ -4063,13 +4062,13 @@ namespace Thetis
 						if (chan == 0)
 						{
 							if(bVFOaUseRX2)
-								dIF = c.VFOAFreq - consoleThreadSafe.CentreFrequency;
+								dIF = consoleThreadSafe.VFOAFreq - consoleThreadSafe.CentreFrequency;
 							else
-								dIF = c.VFOBFreq - consoleThreadSafe.CentreRX2Frequency;
+								dIF = consoleThreadSafe.VFOBFreq - consoleThreadSafe.CentreRX2Frequency;
 						}
 						else
 						{
-							dIF = c.VFOBFreq - consoleThreadSafe.CentreRX2Frequency;
+							dIF = consoleThreadSafe.VFOBFreq - consoleThreadSafe.CentreRX2Frequency;
 						}
 					}
 
@@ -4099,14 +4098,14 @@ namespace Thetis
 						double c = dds - consoleThreadSafe.CentreFrequency;
 						c = Math.Round(c, 6);
 						consoleThreadSafe.CentreFrequency = dds;
-						c.VFOAFreq += c;
+						consoleThreadSafe.VFOAFreq += c;
 					}
 					else if (rx == 1)
 					{
 						double c = dds - consoleThreadSafe.CentreRX2Frequency;
 						c = Math.Round(c, 6);
 						consoleThreadSafe.CentreRX2Frequency = dds;
-						c.VFOBFreq += c;
+						consoleThreadSafe.VFOBFreq += c;
 					}
 				}
 			}
@@ -4159,13 +4158,13 @@ namespace Thetis
 					{
 						if (chan == 0)
 						{
-							if (c.VFOAFreq != vfo)
-								c.VFOAFreq = vfo;
+							if (consoleThreadSafe.VFOAFreq != vfo)
+								consoleThreadSafe.VFOAFreq = vfo;
 						}
 						else if (chan == 1)
 						{
-							if (c.VFOBFreq != vfo)
-								c.VFOBFreq = vfo;
+							if (consoleThreadSafe.VFOBFreq != vfo)
+								consoleThreadSafe.VFOBFreq = vfo;
 						}
 					}
 					else if (rx == 1)
@@ -4176,19 +4175,19 @@ namespace Thetis
 							{
 								if (bVFOaUseRX2)
 								{
-									if (c.VFOAFreq != vfo)
-										c.VFOAFreq = vfo;
+									if (consoleThreadSafe.VFOAFreq != vfo)
+										consoleThreadSafe.VFOAFreq = vfo;
 								}
                                 else
                                 {
-									if (c.VFOBFreq != vfo)
-										c.VFOBFreq = vfo;
+									if (consoleThreadSafe.VFOBFreq != vfo)
+										consoleThreadSafe.VFOBFreq = vfo;
 								}
 							}
 							else if (chan == 1)
 							{
-								if (c.VFOBFreq != vfo)
-									c.VFOBFreq = vfo;
+								if (consoleThreadSafe.VFOBFreq != vfo)
+									consoleThreadSafe.VFOBFreq = vfo;
 							}
 						}
 					}
@@ -4203,11 +4202,11 @@ namespace Thetis
 					{
 						if (chan == 0)
 						{
-							vfo = c.VFOAFreq;
+							vfo = consoleThreadSafe.VFOAFreq;
 						}
 						else if (chan == 1)
 						{
-							vfo = c.VFOBFreq;
+							vfo = consoleThreadSafe.VFOBFreq;
 						}
 					}
 					else if (rx == 1)
@@ -4215,13 +4214,13 @@ namespace Thetis
 						if (chan == 0)
 						{
 							if (bVFOaUseRX2)
-								vfo = c.VFOAFreq;
+								vfo = consoleThreadSafe.VFOAFreq;
 							else
-								vfo = c.VFOBFreq;
+								vfo = consoleThreadSafe.VFOBFreq;
 						}
 						else
 						{
-							vfo = c.VFOBFreq;
+							vfo = consoleThreadSafe.VFOBFreq;
 						}
 					}
 
@@ -4281,8 +4280,8 @@ namespace Thetis
 							{
 								if(m_server.CWbecomesCWUabove10mhz)
 								{
-									bool bVFOA10orAbove = c.VFOAFreq >= 10.0;
-                                    bool bVFOB10orAbove = c.VFOBFreq >= 10.0;
+									bool bVFOA10orAbove = consoleThreadSafe.VFOAFreq >= 10.0;
+                                    bool bVFOB10orAbove = consoleThreadSafe.VFOBFreq >= 10.0;
 									
                                     if (rx == 0)
 									{
