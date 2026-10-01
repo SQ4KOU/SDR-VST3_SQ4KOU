@@ -38225,6 +38225,13 @@ namespace Thetis
             set
             {
                 rx2_enabled = value;
+
+                // RX2 max-bin detection is meaningful only while RX2 is active.
+                // Leaving this flag set after RX2 is disabled makes later RX1 band
+                // changes re-enter the inactive RX2 WDSP path and can block the UI.
+                if (!rx2_enabled)
+                    _display_max_bin_enabled[1] = false;
+
                 if (DataFlowing)
                 {
                     if (rx2_enabled)
@@ -52694,6 +52701,21 @@ namespace Thetis
         {
             if (rx < 1 || rx > 2) return;
 
+            // Never touch RX2 DSP/WDSP state while RX2 is disabled. A stale
+            // _display_max_bin_enabled[1] can otherwise survive an RX2 disable
+            // and make a normal RX1 band change call GetDSPRX(1, ...) and
+            // WDSP.SetupDetectMaxBin() on an inactive channel. The physical
+            // diagnostics showed multi-second UI stalls on exactly this path.
+            if (rx == 2 && !rx2_enabled)
+            {
+                if (_display_max_bin_enabled[1] || enabled)
+                    BandUiDiagnostics.Stage("MaxBin.RX2.skip.disabled",
+                        $"enabled={enabled} updateState={update_enabled_state}");
+
+                _display_max_bin_enabled[1] = false;
+                return;
+            }
+
             int disp;
             float sample_rate;
             double low;
@@ -52736,7 +52758,10 @@ namespace Thetis
                     break;
             }
 
+            BandUiDiagnostics.Stage("MaxBin.WDSP.before",
+                $"rx={rx} disp={disp} enabled={enabled} sr={sample_rate} low={low:F0} high={high:F0}");
             WDSP.SetupDetectMaxBin(enabled ? 1 : 0, disp, 0, 0, sample_rate, low, high, 0.5, frame_rate);
+            BandUiDiagnostics.Stage("MaxBin.WDSP.after", $"rx={rx} enabled={enabled}");
 
             if(update_enabled_state) _display_max_bin_enabled[rx - 1] = enabled;
         }
