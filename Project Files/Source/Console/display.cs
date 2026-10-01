@@ -818,6 +818,15 @@ namespace Thetis
             set { _pan3DRidgeHeight = Math.Max(0.1f, Math.Min(1.0f, value)); }
         }
 
+        // 0 = legacy vertical front curtain, 1 = front fill is pulled fully
+        // toward the first few receding history ridges.
+        private static float _pan3DFrontSlope = 0.40f;
+        public static float Pan3DFrontSlope
+        {
+            get { return _pan3DFrontSlope; }
+            set { _pan3DFrontSlope = Math.Max(0.0f, Math.Min(1.0f, value)); }
+        }
+
         // floor-lift exponent (Aether DssRenderer pow(s, zCurve), their default 0.70):
         // <1 expands the noise-floor band so the floor is visible and rises into the
         // surface instead of collapsing flat at the baseline; 1.0 = plain linear
@@ -874,6 +883,7 @@ namespace Thetis
                             case "ud3DXOffset": Pan3DPerspective = float.Parse(val); break;
                             case "ud3DYOffset": Pan3DDepth = float.Parse(val); break;
                             case "ud3DRidgeHeight": Pan3DRidgeHeight = float.Parse(val); break;
+                            case "ud3DFrontSlope": Pan3DFrontSlope = float.Parse(val) / 100f; break;
                             case "ud3DHaze": Pan3DDepthFade = float.Parse(val); break;
                             case "ud3DLineCount": Pan3DLineCount = int.Parse(val); break;
                             case "ud3DZCurve": Pan3DZCurve = float.Parse(val); break;
@@ -6341,6 +6351,38 @@ namespace Thetis
                 float live3DRidge = H * _pan3DRidgeHeight;
                 float live3DZCurve = Math.Max(0.05f, _pan3DZCurve);
 
+                // Front Slope target: use a few receding history rows as the
+                // "landing" surface for the live front instead of always dropping
+                // vertically to the absolute floor. At 0% this is bit-for-bit the
+                // old curtain geometry; at 100% the live front joins the history.
+                float frontSlope = live3DMapping ? _pan3DFrontSlope : 0f;
+                float[] frontSlopeFrame = null;
+                float frontSlopeInset = 0f;
+                float frontSlopeRowW = W;
+                float frontSlopeBaseline = live3DBottomY;
+                float frontSlopeRidge = live3DRidge;
+                if (frontSlope > 0.0001f)
+                {
+                    float[][] slopeHist = ActivePan3DHistory();
+                    int visibleLines = Math.Min(_3dHistoryCount, _pan3DLineCount);
+                    if (slopeHist != null && visibleLines >= 3)
+                    {
+                        int slopeRows = Math.Min(3, visibleLines - 1);
+                        int slopeIndex = (_3dHistoryHead - 1 - slopeRows + Max3DHistoryLines * 2) % Max3DHistoryLines;
+                        float[] candidate = slopeHist[slopeIndex];
+                        if (candidate != null && candidate.Length >= nDecimatedWidth)
+                        {
+                            frontSlopeFrame = candidate;
+                            float tSlope = slopeRows / (float)(visibleLines - 1);
+                            float rowWidthFrac = 1.0f - tSlope * (1.0f - _pan3DPerspective);
+                            frontSlopeInset = W * (1.0f - rowWidthFrac) * 0.5f;
+                            frontSlopeRowW = W - 2.0f * frontSlopeInset;
+                            frontSlopeBaseline = live3DBottomY - tSlope * (H * _pan3DDepth);
+                            frontSlopeRidge = live3DRidge * rowWidthFrac;
+                        }
+                    }
+                }
+
                 // bloom/glow (Tier 2): live trace segments are recorded during the column
                 // loop, replayed into an offscreen layer (inside its own Begin/EndDraw -
                 // draws outside that pair are silently dropped!), blurred via the D2D
@@ -6482,8 +6524,27 @@ namespace Thetis
                     //pana fill
                     if ((pan_fill || liveCustomFill) && !bSpecFillMesh)
                     {
-                        // draw vertical line, this is so much faster than FillGeometry as the geo created would be so complex any fill alogorthm would struggle
+                        // Legacy front was a vertical curtain to the absolute
+                        // floor. Front Slope progressively pulls the lower endpoint
+                        // toward a receding history ridge, producing a true inclined
+                        // leading surface instead of a flat wall.
                         bottomPoint.X = point.X;
+                        bottomPoint.Y = live3DBottomY;
+                        if (frontSlopeFrame != null && frontSlope > 0.0001f)
+                        {
+                            float xFracSlope = i / (float)(nDecimatedWidth > 1 ? nDecimatedWidth - 1 : 1);
+                            float targetX = frontSlopeInset + xFracSlope * frontSlopeRowW;
+                            float dSlope = frontSlopeFrame[i] + fOffset;
+                            float sSlope = (dSlope - grid_min) / (float)yRange;
+                            if (sSlope < 0f) sSlope = 0f; else if (sSlope > 1f) sSlope = 1f;
+                            float targetY = frontSlopeBaseline -
+                                (float)Math.Pow(sSlope, live3DZCurve) * frontSlopeRidge;
+                            if (targetY < nVerticalShift) targetY = nVerticalShift;
+                            else if (targetY > live3DBottomY) targetY = live3DBottomY;
+
+                            bottomPoint.X = point.X + (targetX - point.X) * frontSlope;
+                            bottomPoint.Y = live3DBottomY + (targetY - live3DBottomY) * frontSlope;
+                        }
 
                         ID2D1Brush activeFillBrush = fillBrush;
                         bool bSolidWallBackdrop = false;
@@ -6497,7 +6558,7 @@ namespace Thetis
                             // then filled with a smooth 2D-style vertical gradient scaled
                             // by the opacity slider. Hard edge at the curve; the 3D
                             // history above/behind the wall is never touched.
-                            bSolidWallBackdrop = true;
+                            bSolidWallBackdrop = frontSlope <= 0.0001f;
 
                             int rF = _pan3DFillColor.R;
                             int gF = _pan3DFillColor.G;
@@ -7595,7 +7656,14 @@ namespace Thetis
                 // alpha fade — starts near-opaque, gently fades
                 float alpha = 1.0f - tSmooth * 0.15f;
 
-                // --- PASS 1: Draw solid column fills (trace down to absolute bottom) ---
+                // --- PASS 1: Draw solid column fills ---
+                // Front Slope also affects the first few historical curtains so the
+                // live wedge does not reveal another vertical wall immediately behind it.
+                int frontSlopeRows = Math.Min(4, Math.Max(0, rowCount - 1));
+                float rowFrontSlope = 0f;
+                if (_pan3DFrontSlope > 0f && i < frontSlopeRows && i + 1 < rowCount)
+                    rowFrontSlope = _pan3DFrontSlope * (1.0f - i / (float)frontSlopeRows);
+
                 for (int c = 0; c < nDecimatedWidth; c++)
                 {
                     float xFrac = (float)c / (nDecimatedWidth > 1 ? nDecimatedWidth - 1 : 1);
@@ -7654,9 +7722,31 @@ namespace Thetis
                             new Vortice.Mathematics.Color4(R / 255f, G / 255f, B / 255f, alpha));
                         brushCache[cacheKey] = colBrush;
                     }
-                    // fill from trace point DOWN to absolute bottom (not baselineY)
                     Vector2 top = new Vector2(xPx, yPx);
                     Vector2 bot = new Vector2(xPx, bottomY);
+
+                    if (rowFrontSlope > 0.0001f)
+                    {
+                        int nextLine = line + 1;
+                        float[] nextFrame = nextLine < rowSrc.Length ? rowSrc[nextLine] : null;
+                        if (nextFrame != null && nextFrame.Length >= nDecimatedWidth)
+                        {
+                            float nextInset = rowInset[i + 1];
+                            float nextRowW = W - 2.0f * nextInset;
+                            float nextX = nextInset + xFrac * nextRowW;
+
+                            float nextStrength = (nextFrame[c] + fOffset - grid_min) / (float)yRange;
+                            if (nextStrength < 0f) nextStrength = 0f; else if (nextStrength > 1f) nextStrength = 1f;
+                            float nextLift = (float)Math.Pow(nextStrength, zCurve);
+                            float nextY = rowBaseline[i + 1] - nextLift * rowRidge[i + 1];
+                            if (nextY < nVerticalShift) nextY = nVerticalShift;
+                            else if (nextY > bottomY) nextY = bottomY;
+
+                            bot.X = xPx + (nextX - xPx) * rowFrontSlope;
+                            bot.Y = bottomY + (nextY - bottomY) * rowFrontSlope;
+                        }
+                    }
+
                     _d2dRenderTarget.DrawLine(bot, top, colBrush, local_Decimation);
                 }
 
