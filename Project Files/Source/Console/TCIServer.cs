@@ -6756,8 +6756,19 @@ namespace Thetis
 		private Thread m_serverThread = null;
 		private Thread m_purgingThread = null;
 		private List<TCPIPtciSocketListener> m_socketListenersList = null;
+        // Read-mostly immutable snapshot. High-rate IQ/audio/sensor paths and
+        // UI callbacks can enumerate clients without contending on m_objLocker.
+        private volatile TCPIPtciSocketListener[] m_socketListenersSnapshot = new TCPIPtciSocketListener[0];
         private TCPIPtciSocketListener m_activeTxAudioListener = null;
 		private object m_objLocker = new object();
+
+        // Call only while m_objLocker is held after mutating m_socketListenersList.
+        private void RefreshSocketListenersSnapshotLocked()
+        {
+            m_socketListenersSnapshot = m_socketListenersList == null
+                ? new TCPIPtciSocketListener[0]
+                : m_socketListenersList.ToArray();
+        }
         private bool m_bSleepingInPurge = false;
 		private bool m_bDelegatesAdded = false;
 		private int m_nRateLimit = 0;
@@ -6968,6 +6979,7 @@ namespace Thetis
                     m_cwController = new TCICWController(this);
 
 				m_socketListenersList = new List<TCPIPtciSocketListener>();
+                m_socketListenersSnapshot = new TCPIPtciSocketListener[0];
                 cmaster.SetRXTCIRun(0);
 
                 if (console != null && !m_bDelegatesAdded)
@@ -7384,6 +7396,7 @@ namespace Thetis
                 stopList = new List<TCPIPtciSocketListener>(m_socketListenersList);
 				m_socketListenersList.Clear();
 				m_socketListenersList = null;
+                RefreshSocketListenersSnapshotLocked();
 			}
 
             foreach (TCPIPtciSocketListener socketListener in stopList)
@@ -7415,6 +7428,7 @@ namespace Thetis
 					lock (m_objLocker)
 					{
 						m_socketListenersList.Add(socketListener);
+                        RefreshSocketListenersSnapshotLocked();
 					}
 
 					socketListener.ClientConnectedHandlers += ClientConnectedHandler;
@@ -7470,6 +7484,8 @@ namespace Thetis
 					{
 						m_socketListenersList.Remove(deleteList[i]);
 					}
+                    if (deleteList.Count > 0)
+                        RefreshSocketListenersSnapshotLocked();
 				}
 
                 foreach (TCPIPtciSocketListener socketListener in deleteList)
@@ -7524,14 +7540,10 @@ namespace Thetis
                 sendIF = true
             };
 
-            lock (m_objLocker)
+            
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
 					socketListener.VFOChange(vfod);
-                }
             }
         }
 		public void OnVFOBFrequencyChangeHandler(Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider, double offset, int rx)
@@ -7549,15 +7561,11 @@ namespace Thetis
                 sendIF = true
             };
 
-			lock (m_objLocker)
-			{
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
+			
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
 					socketListener.VFOChange(vfod);
 				}
-			}
         }
 		public void OnMoxChangeHandler(int rx, bool oldMox, bool newMox)
 		{
@@ -7591,29 +7599,21 @@ namespace Thetis
 		}
 		public void OnModeChangeHandler(int rx, DSPMode oldMode, DSPMode newMode, Band oldBand, Band newBand)
 		{
-			lock (m_objLocker)
-			{
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
+			
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
 					socketListener.ModeChange(rx,oldMode,newMode, oldBand, newBand);
 				}
-			}
 		}
 		public void OnBandChangeHandler(int rx, Band oldBand, Band newBand)
 		{
-			lock (m_objLocker)
-			{
-				if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
+			
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
 					socketListener.BandChange(rx, oldBand, newBand);
-                    if (rx == 1)
-                        socketListener.SQ4KOUCacheRXBand(newBand);
+                if (rx == 1)
+                    socketListener.SQ4KOUCacheRXBand(newBand);
 				}
-			}
 		}
 		public void OnCentreFrequencyChanged(int rx, double oldFreq, double newFreq, Band band, double offset)
 		{
@@ -7632,39 +7632,27 @@ namespace Thetis
                 replace_if_duplicated = false,
                 sendIF = bCTun
             };
-            lock (m_objLocker)
+            
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    socketListener.CentreChange(vfod);
-                }
+                socketListener.CentreChange(vfod);
             }
         }
 		public void OnFilterChanged(int rx, Filter oldFilter, Filter newFilter, Band band, int low, int high, string sName)
 		{
-			lock (m_objLocker)
-			{
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
+			
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
 					socketListener.FilterChange(rx, oldFilter, newFilter, band, low, high);
 				}
-			}
 		}
 		public void OnFilterEdgesChanged(int rx, Filter filter, Band band, int low, int high, string sName, int max_width, int max_shift)
 		{
-			lock (m_objLocker)
-			{
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
+			
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
 					socketListener.FilterEdgesChange(rx, filter, band, low, high);
 				}
-			}
 		}
         public void OnTXFiltersChanged(int low, int high)
         {
@@ -8212,12 +8200,9 @@ namespace Thetis
             Band activeBand = console.ThreadSafeTCIAccessor.RX1Band;
             if (band != activeBand) return;
 
-            lock (m_objLocker)
-            {
-                if (m_server == null || m_socketListenersList == null) return;
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                    socketListener.SQ4KOUCacheRXBand(activeBand);
-            }
+            
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
+                socketListener.SQ4KOUCacheRXBand(activeBand);
         }
 
         private void OnAntennaTXChanged(Band band, int antenna, bool old_state, bool new_state)
@@ -8226,12 +8211,9 @@ namespace Thetis
             Band activeBand = console.ThreadSafeTCIAccessor.TXBand;
             if (band != activeBand) return;
 
-            lock (m_objLocker)
-            {
-                if (m_server == null || m_socketListenersList == null) return;
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                    socketListener.SQ4KOUCacheTXBand(activeBand);
-            }
+            
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
+                socketListener.SQ4KOUCacheTXBand(activeBand);
         }
 
 		private void OnTXFrequencyChanged(double old_frequency, double new_frequency, Band old_band, Band new_band, bool rx2_enabled, bool tx_vfob, double centre_freq)
@@ -8255,29 +8237,21 @@ namespace Thetis
                 TXVFOB = tx_vfob
             };
 
-            lock (m_objLocker)
+            
+foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    socketListener.TXFrequencyChange(vfod);
-                    // A TX band/VFO/SPLIT change can select another antenna while still in RX.
-                    // Cache only; the 250 ms socket worker publishes it off the callback path.
-                    socketListener.SQ4KOUCacheTXBand(new_band);
-                }
+                socketListener.TXFrequencyChange(vfod);
+                // A TX band/VFO/SPLIT change can select another antenna while still in RX.
+                // Cache only; the 250 ms socket worker publishes it off the callback path.
+                socketListener.SQ4KOUCacheTXBand(new_band);
             }
         }
         private void OnMeterReadingsChanged(int rx, bool tx, ref Dictionary<Reading, float> readings)
         {
-            lock (m_objLocker)
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    socketListener.MeterReadingsChanged(rx, tx, ref readings);
-                }
+                socketListener.MeterReadingsChanged(rx, tx, ref readings);
             }
         }
         public void ShowLog()
@@ -8334,42 +8308,30 @@ namespace Thetis
         }
 
         public void PublishIQSamples(int receiver, int sampleRate, float[] iqSamples, int complexSamples = -1)
-        {            
-            lock (m_objLocker)
+        {
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    socketListener.PublishIQSamples(receiver, sampleRate, iqSamples, complexSamples);
-                }
+                socketListener.PublishIQSamples(receiver, sampleRate, iqSamples, complexSamples);
             }
         }
 
         public void PublishRxAudioSamples(int receiver, int sampleRate, float[] left, float[] right, int samples = -1)
-        {            
-            lock (m_objLocker)
+        {
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    socketListener.PublishRxAudioSamples(receiver, sampleRate, left, right, samples);
-                }
+                socketListener.PublishRxAudioSamples(receiver, sampleRate, left, right, samples);
             }
         }
 
         public bool RequiresRxSensorUpdate(int receiver, int channel)
         {
-            lock (m_objLocker)
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return false;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    if (socketListener != null && socketListener.RequiresRxSensorUpdate(receiver, channel))
-                        return true;
-                }
+                if (socketListener != null && socketListener.RequiresRxSensorUpdate(receiver, channel))
+                    return true;
             }
 
             return false;
@@ -8377,15 +8339,11 @@ namespace Thetis
 
         public bool SensorRequiresUpdate(int receiver, Reading reading)
         {
-            lock (m_objLocker)
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return false;
-
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    if (socketListener != null && socketListener.SensorRequiresUpdate(receiver, reading))
-                        return true;
-                }
+                if (socketListener != null && socketListener.SensorRequiresUpdate(receiver, reading))
+                    return true;
             }
 
             return false;
@@ -8394,18 +8352,14 @@ namespace Thetis
         public int MinimumRequiredRxSensorInterval()
         {
             int interval = int.MaxValue;
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
 
-            lock (m_objLocker)
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return interval;
+                if (socketListener == null) continue;
 
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    if (socketListener == null) continue;
-
-                    int listenerInterval = socketListener.MinimumRequiredRxSensorInterval();
-                    if (listenerInterval < interval) interval = listenerInterval;
-                }
+                int listenerInterval = socketListener.MinimumRequiredRxSensorInterval();
+                if (listenerInterval < interval) interval = listenerInterval;
             }
 
             return interval;
@@ -8414,18 +8368,14 @@ namespace Thetis
         public int MinimumRequiredTxSensorInterval()
         {
             int interval = int.MaxValue;
+            TCPIPtciSocketListener[] listeners = m_socketListenersSnapshot;
 
-            lock (m_objLocker)
+            foreach (TCPIPtciSocketListener socketListener in listeners)
             {
-                if (m_server == null || m_socketListenersList == null) return interval;
+                if (socketListener == null) continue;
 
-                foreach (TCPIPtciSocketListener socketListener in m_socketListenersList)
-                {
-                    if (socketListener == null) continue;
-
-                    int listenerInterval = socketListener.MinimumRequiredTxSensorInterval();
-                    if (listenerInterval < interval) interval = listenerInterval;
-                }
+                int listenerInterval = socketListener.MinimumRequiredTxSensorInterval();
+                if (listenerInterval < interval) interval = listenerInterval;
             }
 
             return interval;
