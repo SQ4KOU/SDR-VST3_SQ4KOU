@@ -47026,12 +47026,39 @@ namespace Thetis
 
             if (bse == null) return;
 
+            // Slow-path diagnostic only. Normal band changes produce no log traffic.
+            // If a physical test still stalls, this identifies which synchronous phase
+            // consumed the UI thread instead of forcing another speculative change.
+            long perf0 = Stopwatch.GetTimestamp();
+
             NetworkIO.SendHighPriority(0);
+            long perf1 = Stopwatch.GetTimestamp();
+
             SetBand(bse.Mode.ToString(), bse.Filter.ToString(), bse.Frequency, bse.CTUNEnabled, bse.ZoomSlider, bse.CentreFrequency);
+            long perf2 = Stopwatch.GetTimestamp();
+
             UpdateWaterfallLevelValues();
             updateDisplayGridLevelValues();
             UpdateDiversityValues();
-            NetworkIO.SendHighPriority(1);            
+            long perf3 = Stopwatch.GetTimestamp();
+
+            NetworkIO.SendHighPriority(1);
+            long perf4 = Stopwatch.GetTimestamp();
+
+            double tickToMs = 1000.0 / Stopwatch.Frequency;
+            double totalMs = (perf4 - perf0) * tickToMs;
+            if (totalMs >= 100.0)
+            {
+                Common.LogString(String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "BAND PERF total={0:F1}ms hpOff={1:F1}ms setBand={2:F1}ms display={3:F1}ms hpOn={4:F1}ms target={5} freq={6:F6}",
+                    totalMs,
+                    (perf1 - perf0) * tickToMs,
+                    (perf2 - perf1) * tickToMs,
+                    (perf3 - perf2) * tickToMs,
+                    (perf4 - perf3) * tickToMs,
+                    bse.Band,
+                    bse.Frequency));
+            }
         }
 
         private void OnBandChangeHandler(int rx, Band oldBand, Band newBand)
