@@ -56,6 +56,8 @@ namespace Thetis
         private ComboBoxTS combo3DSource;
         private LabelTS lbl3DEnvelopeDecay;
         private NumericUpDownTS ud3DEnvelopeDecay;
+        private LabelTS lbl3DEnvelopeWidth;
+        private NumericUpDownTS ud3DEnvelopeWidth;
         private ButtonTS btn3DResetDefaults;
 
         public frm3DPanadapter()
@@ -137,6 +139,8 @@ namespace Thetis
             this.combo3DSource = new System.Windows.Forms.ComboBoxTS();
             this.lbl3DEnvelopeDecay = new System.Windows.Forms.LabelTS();
             this.ud3DEnvelopeDecay = new System.Windows.Forms.NumericUpDownTS();
+            this.lbl3DEnvelopeWidth = new System.Windows.Forms.LabelTS();
+            this.ud3DEnvelopeWidth = new System.Windows.Forms.NumericUpDownTS();
             this.btn3DResetDefaults = new System.Windows.Forms.ButtonTS();
             this.SuspendLayout();
             //
@@ -460,13 +464,36 @@ namespace Thetis
             this.toolTip1.SetToolTip(this.ud3DEnvelopeDecay, "Envelope release rate in dB per second. Attack is instantaneous.");
             this.ud3DEnvelopeDecay.ValueChanged += new System.EventHandler(this.ud3DEnvelopeDecay_ValueChanged);
             //
+            // lbl3DEnvelopeWidth
+            //
+            this.lbl3DEnvelopeWidth.Image = null;
+            this.lbl3DEnvelopeWidth.Location = new System.Drawing.Point(12, 356);
+            this.lbl3DEnvelopeWidth.Name = "lbl3DEnvelopeWidth";
+            this.lbl3DEnvelopeWidth.Size = new System.Drawing.Size(105, 16);
+            this.lbl3DEnvelopeWidth.TabIndex = 26;
+            this.lbl3DEnvelopeWidth.Text = "Env Width:";
+            //
+            // ud3DEnvelopeWidth
+            //
+            this.ud3DEnvelopeWidth.DecimalPlaces = 0;
+            this.ud3DEnvelopeWidth.Increment = 2;
+            this.ud3DEnvelopeWidth.Location = new System.Drawing.Point(120, 353);
+            this.ud3DEnvelopeWidth.Maximum = 31;
+            this.ud3DEnvelopeWidth.Minimum = 1;
+            this.ud3DEnvelopeWidth.Name = "ud3DEnvelopeWidth";
+            this.ud3DEnvelopeWidth.Size = new System.Drawing.Size(70, 20);
+            this.ud3DEnvelopeWidth.TabIndex = 27;
+            this.ud3DEnvelopeWidth.Value = 9;
+            this.toolTip1.SetToolTip(this.ud3DEnvelopeWidth, "Frequency-domain envelope width in display bins. Higher values produce a broader, smoother upper envelope.");
+            this.ud3DEnvelopeWidth.ValueChanged += new System.EventHandler(this.ud3DEnvelopeWidth_ValueChanged);
+            //
             // btn3DResetDefaults
             //
             this.btn3DResetDefaults.Image = null;
-            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 365);
+            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 389);
             this.btn3DResetDefaults.Name = "btn3DResetDefaults";
             this.btn3DResetDefaults.Size = new System.Drawing.Size(208, 26);
-            this.btn3DResetDefaults.TabIndex = 26;
+            this.btn3DResetDefaults.TabIndex = 28;
             this.btn3DResetDefaults.Text = "Reset Defaults";
             this.toolTip1.SetToolTip(this.btn3DResetDefaults, "Reset all 3D panadapter settings to defaults.");
             this.btn3DResetDefaults.Click += new System.EventHandler(this.btn3DResetDefaults_Click);
@@ -475,7 +502,7 @@ namespace Thetis
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(232, 403);
+            this.ClientSize = new System.Drawing.Size(232, 427);
             this.Controls.Add(this.chk3DWaterfallSync);
             this.Controls.Add(this.chk3DSideWalls);
             this.Controls.Add(this.lbl3DXOffset);
@@ -503,6 +530,8 @@ namespace Thetis
             this.Controls.Add(this.combo3DSource);
             this.Controls.Add(this.lbl3DEnvelopeDecay);
             this.Controls.Add(this.ud3DEnvelopeDecay);
+            this.Controls.Add(this.lbl3DEnvelopeWidth);
+            this.Controls.Add(this.ud3DEnvelopeWidth);
             this.Controls.Add(this.btn3DResetDefaults);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -531,6 +560,7 @@ namespace Thetis
                 ? Display.Pan3DSourceMode.Envelope
                 : Display.Pan3DSourceMode.Spectrum;
             Display.Pan3DEnvelopeDecayDbPerSec = (float)ud3DEnvelopeDecay.Value;
+            Display.Pan3DEnvelopeWidth = (int)ud3DEnvelopeWidth.Value;
             Display.Pan3DLineColor = clrbtn3DLineColor.Color;
             Display.Pan3DFillColorEnabled = chk3DFillColorEnable.Checked;
             Display.Pan3DFillColor = clrbtn3DFillColor.Color;
@@ -544,6 +574,8 @@ namespace Thetis
             bool enabled = combo3DSource.SelectedIndex == 1;
             lbl3DEnvelopeDecay.Enabled = enabled;
             ud3DEnvelopeDecay.Enabled = enabled;
+            lbl3DEnvelopeWidth.Enabled = enabled;
+            ud3DEnvelopeWidth.Enabled = enabled;
         }
 
         private void frm3DPanadapter_FormClosing(object sender, FormClosingEventArgs e)
@@ -627,6 +659,20 @@ namespace Thetis
             Display.Pan3DEnvelopeDecayDbPerSec = (float)ud3DEnvelopeDecay.Value;
         }
 
+        private void ud3DEnvelopeWidth_ValueChanged(object sender, EventArgs e)
+        {
+            if (_initializing) return;
+            int v = (int)ud3DEnvelopeWidth.Value;
+            if ((v & 1) == 0)
+            {
+                v = Math.Min(31, v + 1);
+                _initializing = true;
+                ud3DEnvelopeWidth.Value = v;
+                _initializing = false;
+            }
+            Display.Pan3DEnvelopeWidth = v;
+        }
+
         private void clrbtn3DLineColor_Changed(object sender, EventArgs e)
         {
             if (_initializing) return;
@@ -672,6 +718,7 @@ namespace Thetis
             ud3DZCurve.Value = 0.90m;
             combo3DSource.SelectedIndex = 0;
             ud3DEnvelopeDecay.Value = 30.0m;
+            ud3DEnvelopeWidth.Value = 9;
             clrbtn3DLineColor.Color = Color.Aquamarine;
             chk3DFillColorEnable.Checked = false;
             clrbtn3DFillColor.Color = Color.Aquamarine;
