@@ -138,6 +138,9 @@ namespace Thetis
                 float3 CB_Background;
                 float CB_TexelX;    // 1/cols for neighbour taps
                 float CB_TexelY;    // 1/rows
+                float CB_FrontSlope;// 0=legacy vertical curtain, 1=join next ridges
+                float CB_FrontRows; // number of front rows participating in slope
+                float CB_Pad0;
             };
 
             Texture2D HeightTex : register(t0);
@@ -180,7 +183,29 @@ namespace Thetis
                 float x = inset + u * (CB_W - 2.0 * inset);
                 float baseline = CB_BottomY - v * CB_DepthSpan;
                 float yTop = baseline - lift * CB_FrontRidge * rwf; // uniform perspective scaling
-                float y = (vin.z > 0.5) ? CB_BottomY : yTop;        // curtains reach the floor
+
+                float y = yTop;
+                if (vin.z > 0.5)
+                {
+                    // Front Slope: only the nearest few curtains are pulled toward
+                    // the next receding ridge. Deeper rows retain the original
+                    // floor curtain, preserving the established 3D body.
+                    float zone = max(CB_TexelY * CB_FrontRows, CB_TexelY);
+                    float frontWeight = saturate(1.0 - v / zone) * saturate(CB_FrontSlope);
+
+                    float v2 = min(v + CB_TexelY, 1.0);
+                    float rwf2 = 1.0 - v2 * (1.0 - CB_BackW);
+                    float inset2 = CB_W * (1.0 - rwf2) * 0.5;
+                    float h2 = HeightTex.SampleLevel(PointSamp, TexelAt(u, v2), 0).r;
+                    float lift2 = pow(max(h2, 0.0), CB_ZCurve);
+                    float x2 = inset2 + u * (CB_W - 2.0 * inset2);
+                    float baseline2 = CB_BottomY - v2 * CB_DepthSpan;
+                    float y2 = baseline2 - lift2 * CB_FrontRidge * rwf2;
+
+                    x = lerp(x, x2, frontWeight);
+                    y = lerp(CB_BottomY, y2, frontWeight);
+                }
+
                 o.pos = float4(x / CB_W * 2.0 - 1.0, 1.0 - y / CB_TargetH * 2.0, 0.0, 1.0);
                 o.uv = float2(u, v);
                 return o;
@@ -548,8 +573,7 @@ namespace Thetis
             public float W, TargetH, BottomY, DepthSpan;   // 0-15
             public float FrontRidge, BackW, ZCurve, Haze;  // 16-31
             public float BgR, BgG, BgB, TexelX;            // 32-47 (float3 aligned to 16)
-            public float TexelY;                           // 48-51
-            public float _pad0, _pad1, _pad2;              // 52-63
+            public float TexelY, FrontSlope, FrontRows, Pad0; // 48-63
         }
 
         /// <summary>
@@ -677,6 +701,9 @@ namespace Thetis
                     BgB = m_cDX2_display_background_clear_colour.B,
                     TexelX = 1f / cols,
                     TexelY = 1f / rowCount,
+                    FrontSlope = _pan3DFrontSlope,
+                    FrontRows = 4.0f,
+                    Pad0 = 0f,
                 };
                 MappedSubresource cbMap = dc.Map((ID3D11Resource)_meshCB, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
                 unsafe { System.Runtime.CompilerServices.Unsafe.Write((void*)cbMap.DataPointer, cb); }
