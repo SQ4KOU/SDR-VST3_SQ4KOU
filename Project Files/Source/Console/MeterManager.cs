@@ -45184,6 +45184,9 @@ namespace Thetis
         }
         private static void OnCentreFrequency(int rx, double oldFreq, double newFreq, Band band, double offset)
         {
+            if (rx == 2 && (_console == null || !_console.RX2Enabled))
+                return;
+
             if (oldFreq != newFreq)
             {
                 foreach (KeyValuePair<int, clsMiniSpec> kvp in _mini_spec.Where(minispec => minispec.Value.RX == rx))
