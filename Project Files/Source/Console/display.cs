@@ -273,6 +273,10 @@ namespace Thetis
         private static bool _3dEnvelopeTXValid;
         private static long _3dEnvelopeRXLastTicks;
         private static long _3dEnvelopeTXLastTicks;
+        private static float[][] _3dEnvelopeMedianRX;
+        private static float[][] _3dEnvelopeMedianTX;
+        private static int _3dEnvelopeMedianRXCount;
+        private static int _3dEnvelopeMedianTXCount;
 
         // 3D panadapter perspective constants (matched to AetherSDR DssRenderer)
         private static float _pan3DPerspective = 0.60f;   // back rows = 60% of front width (kBackWidthFrac)
@@ -574,6 +578,8 @@ namespace Thetis
             _3dEnvelopeTXValid = false;
             _3dEnvelopeRXLastTicks = 0;
             _3dEnvelopeTXLastTicks = 0;
+            _3dEnvelopeMedianRXCount = 0;
+            _3dEnvelopeMedianTXCount = 0;
         }
 
         private static float[][] ActivePan3DHistory()
@@ -615,6 +621,11 @@ namespace Thetis
             float[] env = tx ? _3dEnvelopeTX : _3dEnvelopeRX;
             bool envValid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
             long lastTicks = tx ? _3dEnvelopeTXLastTicks : _3dEnvelopeRXLastTicks;
+            float[][] envMed = tx ? _3dEnvelopeMedianTX : _3dEnvelopeMedianRX;
+            int envMedCount = tx ? _3dEnvelopeMedianTXCount : _3dEnvelopeMedianRXCount;
+            bool useEnvelopeMedian = envMedCount >= 2 && envMed != null &&
+                envMed[0] != null && envMed[0].Length >= cols &&
+                envMed[1] != null && envMed[1].Length >= cols;
 
             if (env == null || env.Length < cols)
             {
@@ -643,21 +654,35 @@ namespace Thetis
                 }
 
                 // Spectrum mode keeps the exact historical input used before this
-                // feature. Envelope adds instantaneous attack and time-based decay.
+                // feature. Envelope uses its own RX/TX median history so MOX
+                // transitions cannot contaminate the first envelope samples.
                 hist[head][c] = sample;
+
+                float envelopeSample;
+                if (useEnvelopeMedian)
+                {
+                    float ea = source[c];
+                    float eb = envMed[0][c];
+                    float ed = envMed[1][c];
+                    envelopeSample = Math.Max(Math.Min(ea, eb), Math.Min(Math.Max(ea, eb), ed));
+                }
+                else
+                {
+                    envelopeSample = source[c];
+                }
 
                 float e;
                 if (!envValid)
                 {
-                    e = sample;
+                    e = envelopeSample;
                 }
-                else if (sample >= env[c])
+                else if (envelopeSample >= env[c])
                 {
-                    e = sample; // instantaneous attack
+                    e = envelopeSample; // instantaneous attack
                 }
                 else
                 {
-                    e = Math.Max(sample, env[c] - decay);
+                    e = Math.Max(envelopeSample, env[c] - decay);
                 }
 
                 env[c] = e;
@@ -675,6 +700,23 @@ namespace Thetis
                 med[0] = new float[cols];
             Array.Copy(source, med[0], cols);
             if (_3dMedianCount < int.MaxValue) _3dMedianCount++;
+
+            // Independent envelope median history for RX/TX.
+            if (envMed == null)
+            {
+                envMed = new float[2][];
+                if (tx) _3dEnvelopeMedianTX = envMed; else _3dEnvelopeMedianRX = envMed;
+            }
+            if (envMed[1] == null || envMed[1].Length < cols)
+                envMed[1] = new float[cols];
+            if (envMed[0] != null && envMed[0].Length >= cols)
+                Array.Copy(envMed[0], envMed[1], cols);
+            if (envMed[0] == null || envMed[0].Length < cols)
+                envMed[0] = new float[cols];
+            Array.Copy(source, envMed[0], cols);
+            if (envMedCount < int.MaxValue) envMedCount++;
+            if (tx) _3dEnvelopeMedianTXCount = envMedCount;
+            else _3dEnvelopeMedianRXCount = envMedCount;
 
             if (tx)
             {
@@ -4010,6 +4052,9 @@ namespace Thetis
                     for (int i = 0; i < Max3DHistoryLines; i++)
                         envelopeHistBuf[i] = new float[1];
                     _3dEnvelopeHistoryBuffer = envelopeHistBuf;
+
+                    _3dEnvelopeMedianRX = new float[2][] { new float[1], new float[1] };
+                    _3dEnvelopeMedianTX = new float[2][] { new float[1], new float[1] };
 
                     _3dHistoryCount = 0;
                     _3dHistoryHead = 0;
