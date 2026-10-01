@@ -498,7 +498,7 @@ namespace Thetis
             this.lbl3DFrontSlope.Name = "lbl3DFrontSlope";
             this.lbl3DFrontSlope.Size = new System.Drawing.Size(105, 16);
             this.lbl3DFrontSlope.TabIndex = 28;
-            this.lbl3DFrontSlope.Text = "Front Slope %:";
+            this.lbl3DFrontSlope.Text = "Front Rise %:";
             //
             // ud3DFrontSlope
             //
@@ -511,7 +511,7 @@ namespace Thetis
             this.ud3DFrontSlope.Size = new System.Drawing.Size(70, 20);
             this.ud3DFrontSlope.TabIndex = 29;
             this.ud3DFrontSlope.Value = 40;
-            this.toolTip1.SetToolTip(this.ud3DFrontSlope, "0% keeps the legacy vertical front wall; higher values incline the leading surface into the first history rows.");
+            this.toolTip1.SetToolTip(this.ud3DFrontSlope, "Controls how gradually the 3D signal grows from zero at the near edge. 0% = fast rise, 100% = long smooth rise. The front wall is always disabled.");
             this.ud3DFrontSlope.ValueChanged += new System.EventHandler(this.ud3DFrontSlope_ValueChanged);
             //
             // btn3DResetDefaults
