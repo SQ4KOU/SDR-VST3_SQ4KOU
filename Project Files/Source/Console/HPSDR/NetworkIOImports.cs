@@ -27,8 +27,24 @@ namespace Thetis
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetWBEnable(int adc, int enable);
 
-        [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SendHighPriority(int enable);
+        [DllImport("ChannelMaster.dll", EntryPoint = "SendHighPriority", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void NativeSendHighPriority(int enable);
+
+        public static void SendHighPriority(int enable)
+        {
+            if (BandUiDiagnostics.IsActive)
+                BandUiDiagnostics.Stage("HPSDR.SendHighPriority.enter", "enable=" + enable);
+
+            try
+            {
+                NativeSendHighPriority(enable);
+            }
+            finally
+            {
+                if (BandUiDiagnostics.IsActive)
+                    BandUiDiagnostics.Stage("HPSDR.SendHighPriority.exit", "enable=" + enable);
+            }
+        }
 
         [DllImport("ChannelMaster.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetDDCRate(int id, int rate);

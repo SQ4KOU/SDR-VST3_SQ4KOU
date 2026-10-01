@@ -132,6 +132,7 @@
     <Compile Include="GPUWaterfallMagnitudeMode.cs" />
     <Compile Include="GPUWaterfallResamplingMode.cs" />
     <Compile Include="GPUWaterfallLogger.cs" />
+    <Compile Include="BandUiDiagnostics.cs" />
     <Compile Include="GPUDetector.cs" />
     <Compile Include="NoiseFloorPro.cs" />
     <Compile Include="ZoomAdaptive.cs" />

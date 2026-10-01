@@ -130,14 +130,17 @@ namespace Thetis
         }
         public void InitBandStackFilter(BandStackFilter bsf, bool select = true)
         {
+            BandUiDiagnostics.Stage("BandStackForm.Init.enter", bsf == null ? "null" : $"filter={bsf.FilterName} entries={bsf.NumberOfEntries} select={select}");
             m_bIgnoreIndexChanged = true;
 
+            BandUiDiagnostics.Stage("BandStackForm.Init.BeginUpdate");
             bandStackListBox.BeginUpdate();
             // NOTE: the use of entries here is accesing a COPY
             // of the filters internal entries. You can update m_bsf.Entries
             // but it wont change the contents of the filter
             // you need to use UpdateEntry
 
+            BandUiDiagnostics.Stage("BandStackForm.Init.ClearItems");
             bandStackListBox.ClearItems();
             bandStackListBox.SelectedIndex = -1;
 
@@ -145,6 +148,7 @@ namespace Thetis
 
             if (m_bsf == null)
             {
+                BandUiDiagnostics.Stage("BandStackForm.Init.EndUpdate.null");
                 bandStackListBox.EndUpdate();
                 return;
             }
@@ -162,6 +166,7 @@ namespace Thetis
                 lblFilterName.ForeColor = Color.White;
             }
 
+            BandUiDiagnostics.Stage("BandStackForm.Init.populate");
             foreach (BandStackEntry bse in m_bsf.Entries)
             {
                 int n = bandStackListBox.AddItem(bse);
@@ -172,24 +177,31 @@ namespace Thetis
                 }
             }
 
+            BandUiDiagnostics.Stage("BandStackForm.Init.EndUpdate");
             bandStackListBox.EndUpdate();
 
+            BandUiDiagnostics.Stage("BandStackForm.Init.setupSelectedButtons");
             setupSelectedButtons();
+            BandUiDiagnostics.Stage("BandStackForm.Init.setupRadioButtons");
             setupRadioButtons();
 
             m_bIgnoreIndexChanged = false;
+                    BandUiDiagnostics.Stage("BandStackForm.Init.exit");
         }
         public void UpdateSelected()
         {
+            BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.enter");
             if (m_bsf == null) return;
 
             if (m_bsf.Current() == null) return;
 
             m_bIgnoreIndexChanged = true;
 
+            BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.BeginUpdate");
             bandStackListBox.BeginUpdate();
             string sGUID = m_bsf.Current().GUID;
 
+            BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.scan", "items=" + bandStackListBox.Items.Count);
             for (int n = 0; n < bandStackListBox.Items.Count; n++)
             {
                 BandStackEntry bs = bandStackListBox.Items[n] as BandStackEntry;
@@ -200,10 +212,13 @@ namespace Thetis
                     break;
                 }
             }
+            BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.EndUpdate");
             bandStackListBox.EndUpdate();
+            BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.setupSelectedButtons");
             setupSelectedButtons();
 
             m_bIgnoreIndexChanged = false;
+                    BandUiDiagnostics.Stage("BandStackForm.UpdateSelected.exit");
         }
         private void setupSelectedButtons()
         {

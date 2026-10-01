@@ -5940,6 +5940,7 @@ namespace Thetis
         private bool m_bSetBandRunning = false; // so we know if any events raised are caused by SetBand
         public void SetBand(string mode, string filter, double freq, bool CTUN, int zoomFactor, double centerFreq)
         {
+            BandUiDiagnostics.Stage("SetBand.enter", $"mode={mode} filter={filter} freq={freq:F6} ctun={CTUN} zoom={zoomFactor} center={centerFreq:F6}");
             //MW0LGE_21d
             Band oldBand = RX1Band;
             DSPMode oldMode = RX1DSPMode;
@@ -5952,23 +5953,28 @@ namespace Thetis
             //
 
             // These are needed for managing QSK when band changes also trigger mode changes.
+            BandUiDiagnostics.Stage("SetBand.BandByFreq");
             RX1Band_changing_to = BandByFreq(freq, tx_xvtr_index, current_region);
             qsk_band_changing = true;
 
             // Set mode, filter, and frequency according to passed parameters
 
+            BandUiDiagnostics.Stage("SetBand.RX1DSPMode", mode);
             RX1DSPMode = (DSPMode)Enum.Parse(typeof(DSPMode), mode, true);
 
             //[2.10.3.6]MW0LGE moved after mode
             if (_rx1_dsp_mode != DSPMode.DRM &&
                 _rx1_dsp_mode != DSPMode.SPEC)
             {
+                BandUiDiagnostics.Stage("SetBand.RX1Filter", filter);
                 RX1Filter = (Filter)Enum.Parse(typeof(Filter), filter, true);
             }
 
+            BandUiDiagnostics.Stage("SetBand.CTUN.off");
             ClickTuneDisplay = false;                               // Set CTUN off to restore center frequency - G3OQD
             chkFWCATU.Checked = ClickTuneDisplay;
 
+            BandUiDiagnostics.Stage("SetBand.Zoom", zoomFactor.ToString());
             Zoom = zoomFactor;
 
             //MW0LGE_21c
@@ -5976,15 +5982,20 @@ namespace Thetis
             //Lower down VFAFreq is then assigned to the required frequency
             if (CTUN)
             {
+                BandUiDiagnostics.Stage("SetBand.CentreFrequency", centerFreq.ToString("F6"));
                 CentreFrequency = centerFreq;                      // Restore centre frequency if CTUN enabled - G3OQD
+                BandUiDiagnostics.Stage("SetBand.VFOA.center", CentreFrequency.ToString("F6"));
                 VFOAFreq = CentreFrequency;
             }
 
+            BandUiDiagnostics.Stage("SetBand.CTUN.restore", CTUN.ToString());
             ClickTuneDisplay = CTUN;
             chkFWCATU.Checked = ClickTuneDisplay;
+            BandUiDiagnostics.Stage("SetBand.VFOA.target", freq.ToString("F6"));
             VFOAFreq = freq;                                       // Restore actual receive frequency after CTUN status restored - G3OQD         
 
             // Continuation of QSK-related band/mode-change management - see also QSKEnabled()
+            BandUiDiagnostics.Stage("SetBand.QSK");
             qsk_band_changing = false;
             if (RX1Band_changing_to != oldBand) // actual band change, not just rotating the stack
             {
@@ -6031,6 +6042,7 @@ namespace Thetis
             }
 
             //MW0LGE_21d3 setting the background of buttons, much like the mode buttons, but was totally forgotten here
+            BandUiDiagnostics.Stage("SetBand.bandButtonColors");
             RadioButtonTS r = getButtonForBand(oldBand);
             r.BackColor = SystemColors.Control;
             r = getButtonForBand(RX1Band);
@@ -6043,8 +6055,10 @@ namespace Thetis
             if (oldBand != RX1Band ||
                 oldFreq != VFOAFreq // or if the freq changes
                 )
+                BandUiDiagnostics.Stage("SetBand.SetBandChangeHandlers.Invoke", $"old={oldBand} new={RX1Band}");
                 SetBandChangeHanders?.Invoke(1, oldBand, RX1Band, oldMode, RX1DSPMode, oldFilter, RX1Filter, oldFreq, VFOAFreq,
                     oldCentreFreq, CentreFrequency, oldCtun, ClickTuneDisplay, oldZoomSlider, ptbDisplayZoom.Value);
+                    BandUiDiagnostics.Stage("SetBand.exit", $"band={RX1Band} freq={VFOAFreq:F6}");
         }
 
         // ke9ns add 3-arg SetBand convenience overload for the Scanner
@@ -46725,6 +46739,7 @@ namespace Thetis
         }
         private void OnSetBandChangeHander(int rx, Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider)
         {
+            BandUiDiagnostics.Stage("Console.OnSetBandChange.enter", $"rx={rx} band={oldBand}->{newBand} freq={oldFreq:F6}->{newFreq:F6}");
             if (rx != 1) return;
             handleBSFChange(oldBand, newBand, oldMode, newMode, oldFilter, newFilter, oldFreq, newFreq, oldCentreF, newCentreF, oldCTUN, newCTUN, oldZoomSlider, newZoomSlider);
         }
@@ -46784,6 +46799,7 @@ namespace Thetis
         }
         private void OnCentreFrequencyChanged(int rx, double oldFreq, double newFreq, Band band, double offset)
         {
+            BandUiDiagnostics.Stage("Console.OnCentreFrequencyChanged.enter", $"rx={rx} {oldFreq:F6}->{newFreq:F6} band={band}");
             //[2.10.3.13]MW0LGE removed as only done when frequencies are bein modified
             //otherwise there could be some 'jiggle' due to timing
             ////MW0LGE_21h
@@ -46805,6 +46821,7 @@ namespace Thetis
         }
         private void OnCTUNChanged(int rx, bool oldCTUN, bool newCTUN, Band band)
         {
+            BandUiDiagnostics.Stage("Console.OnCTUNChanged.enter", $"rx={rx} {oldCTUN}->{newCTUN} band={band}");
             //max bin detect
             if (_display_max_bin_enabled[rx-1]) setupDisplayMaxBinDetect(rx, false, true);
 
@@ -46817,6 +46834,7 @@ namespace Thetis
         }
         private void OnFilterChanged(int rx, Filter oldFilter, Filter newFilter, Band band, int low, int high, string sName)
         {
+            BandUiDiagnostics.Stage("Console.OnFilterChanged.enter", $"rx={rx} {oldFilter}->{newFilter} band={band}");
             //vfosync
             handleVfoSyncFilter(rx, newFilter);
 
@@ -46861,6 +46879,7 @@ namespace Thetis
         }
         private void OnZoomChanged(double oldZoomFactor, double newZoomFactor, int sliderValue)
         {
+            BandUiDiagnostics.Stage("Console.OnZoomChanged.enter", $"{oldZoomFactor:F3}->{newZoomFactor:F3} slider={sliderValue}");
             //MW0LGE_21h
             updateBandstackOverlay(1);
 
@@ -46903,6 +46922,7 @@ namespace Thetis
         }
         private void preBandSelect(int rx, Band band, int dir = 0)
         {
+            BandUiDiagnostics.Stage("preBandSelect.enter", $"rx={rx} current={RX1Band} target={band} dir={dir}");
             //[2.10.3.6]MW0LGE no band change on TX fix
             if (MOX && rx == 1 && (VFOATX || (!rx2_enabled && VFOBTX))) return;
             if (MOX && rx == 2 && VFOBTX) return;
@@ -46938,6 +46958,7 @@ namespace Thetis
             //////double end_freq = XVTRForm.GetEnd(xvtr_index);
             #endregion
 
+            BandUiDiagnostics.Stage("preBandSelect.GetFilter.target", band.ToString());
             BandStackFilter bsf = BandStackManager.GetFilter(band, false);  // get the non-user band stack filter
             if (bsf != null)
             {
@@ -46951,6 +46972,7 @@ namespace Thetis
                         return;
                     }
 
+                    BandUiDiagnostics.Stage("preBandSelect.same.UpdateCurrent");
                     bsf.UpdateCurrentWithLastVisitedData(m_bIgnoreFrequencyDupes); // store everything into current on current band filter                    
 
                     if (dir == 0)
@@ -46969,20 +46991,27 @@ namespace Thetis
                         bse = bsf.Previous();
                     }
 
+                    BandUiDiagnostics.Stage("preBandSelect.same.GenerateFilteredList");
                     bsf.GenerateFilteredList(true); // this is done as current is updated above, this may cause that last entry to move ahead of where you area
+                    BandUiDiagnostics.Stage("preBandSelect.BandStackForm.Init.target");
                     BandStack2Form.InitBandStackFilter(bsf, false);
                 }
                 else
                 {
                     // store old which is RX1Band
+                    BandUiDiagnostics.Stage("preBandSelect.GetFilter.old", RX1Band.ToString());
                     BandStackFilter bsfOld = BandStackManager.GetFilter(RX1Band);
                     if (bsfOld != null)
                     {
+                        BandUiDiagnostics.Stage("preBandSelect.old.UpdateCurrent");
                         bsfOld.UpdateCurrentWithLastVisitedData(m_bIgnoreFrequencyDupes);
+                        BandUiDiagnostics.Stage("preBandSelect.old.GenerateFilteredList");
                         bsfOld.GenerateFilteredList(true);
                     }
 
+                    BandUiDiagnostics.Stage("preBandSelect.BandStackForm.Init.target");
                     BandStack2Form.InitBandStackFilter(bsf, false);
+                    BandUiDiagnostics.Stage("preBandSelect.SelectInitial");
                     bse = bsf.SelectInitial();
                 }
 
@@ -47009,18 +47038,38 @@ namespace Thetis
                     }
                 }
 
+                BandUiDiagnostics.Stage("preBandSelect.BandStackForm.UpdateSelected");
                 BandStack2Form.UpdateSelected();
 
+                BandUiDiagnostics.Stage("preBandSelect.setRX1BandFromBandStackEntry", bse == null ? "null" : $"band={bse.Band} freq={bse.Frequency:F6}");
                 setRX1BandFromBandStackEntry(bse);
             }
+            BandUiDiagnostics.Stage("preBandSelect.updateStackNumberDisplay");
             updateStackNumberDisplay(bsf);
+            BandUiDiagnostics.Stage("preBandSelect.exit");
         }
         private void OnBandBeforeChangeHandler(int rx, Band band)
         {
-            preBandSelect(rx, band);
+            BandUiDiagnostics.Begin($"source=BandPreChange rx={rx} current={RX1Band} target={band} freq={VFOAFreq:F6}");
+            try
+            {
+                BandUiDiagnostics.Stage("Console.OnBandBeforeChange.preBandSelect");
+                preBandSelect(rx, band);
+                BandUiDiagnostics.Stage("Console.OnBandBeforeChange.returned");
+            }
+            catch (Exception ex)
+            {
+                BandUiDiagnostics.Exception("OnBandBeforeChangeHandler", ex);
+                throw;
+            }
+            finally
+            {
+                BandUiDiagnostics.End($"rx={rx} target={band} current={RX1Band} freq={VFOAFreq:F6}");
+            }
         }
         private void setRX1BandFromBandStackEntry(in BandStackEntry bse)
         {
+            BandUiDiagnostics.Stage("setRX1BandFromBandStackEntry.enter", bse == null ? "null" : $"band={bse.Band} mode={bse.Mode} filter={bse.Filter} freq={bse.Frequency:F6}");
             //[2.10.3.6]MW0LGE no band change on TX fix
             if (MOX && (VFOATX || (!rx2_enabled && VFOBTX))) return;
 
@@ -47031,18 +47080,27 @@ namespace Thetis
             // consumed the UI thread instead of forcing another speculative change.
             long perf0 = Stopwatch.GetTimestamp();
 
+            BandUiDiagnostics.Stage("setRX1.HP0.before");
             NetworkIO.SendHighPriority(0);
+            BandUiDiagnostics.Stage("setRX1.HP0.after");
             long perf1 = Stopwatch.GetTimestamp();
 
+            BandUiDiagnostics.Stage("setRX1.SetBand.before");
             SetBand(bse.Mode.ToString(), bse.Filter.ToString(), bse.Frequency, bse.CTUNEnabled, bse.ZoomSlider, bse.CentreFrequency);
+            BandUiDiagnostics.Stage("setRX1.SetBand.after");
             long perf2 = Stopwatch.GetTimestamp();
 
+            BandUiDiagnostics.Stage("setRX1.UpdateWaterfallLevelValues");
             UpdateWaterfallLevelValues();
+            BandUiDiagnostics.Stage("setRX1.updateDisplayGridLevelValues");
             updateDisplayGridLevelValues();
+            BandUiDiagnostics.Stage("setRX1.UpdateDiversityValues");
             UpdateDiversityValues();
             long perf3 = Stopwatch.GetTimestamp();
 
+            BandUiDiagnostics.Stage("setRX1.HP1.before");
             NetworkIO.SendHighPriority(1);
+            BandUiDiagnostics.Stage("setRX1.HP1.after");
             long perf4 = Stopwatch.GetTimestamp();
 
             double tickToMs = 1000.0 / Stopwatch.Frequency;
@@ -47059,10 +47117,12 @@ namespace Thetis
                     bse.Band,
                     bse.Frequency));
             }
+                    BandUiDiagnostics.Stage("setRX1BandFromBandStackEntry.exit");
         }
 
         private void OnBandChangeHandler(int rx, Band oldBand, Band newBand)
         {
+            BandUiDiagnostics.Stage("Console.OnBandChange.enter", $"rx={rx} old={oldBand} new={newBand}");
             if (rx == 1)
             {
                 // set the panel rx1 only
@@ -47104,6 +47164,7 @@ namespace Thetis
         }
         private void OnModeChangeHandler(int rx, DSPMode oldMode, DSPMode newMode, Band oldBand, Band newBand)
         {
+            BandUiDiagnostics.Stage("Console.OnModeChange.enter", $"rx={rx} old={oldMode} new={newMode} band={newBand}");
             //reset the cw auto mode return [2.10.3.12]MW0LGE
             if (!(newMode == DSPMode.CWL || newMode == DSPMode.CWU))
             {
@@ -47114,9 +47175,11 @@ namespace Thetis
             clearRXSignalPixels(rx);
 
             //recover the stepindex.
+            BandUiDiagnostics.Stage("Console.OnModeChange.updateStepIndexForMode");
             updateStepIndexForMode(rx, newMode);
 
             //vfosync
+            BandUiDiagnostics.Stage("Console.OnModeChange.handleVfoSyncMode");
             handleVfoSyncMode(rx, newMode);
 
             if (m_bSetBandRunning) return;
@@ -47131,6 +47194,7 @@ namespace Thetis
         }
         private void OnVFOAFrequencyChangeHandler(Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider, double offset, int rx)
         {
+            BandUiDiagnostics.Stage("Console.OnVFOA.enter", $"rx={rx} {oldFreq:F6}->{newFreq:F6} band={oldBand}->{newBand}");
             //[2.10.3.13]MW0LGE removed as only done when frequencies are bein modified
             //otherwise there could be some 'jiggle' due to timing
             //if (rx == 1)
@@ -47143,11 +47207,13 @@ namespace Thetis
             if (KWAutoInformation)
                 BroadcastFreqChange("A", newFreq);
 
+            BandUiDiagnostics.Stage("Console.OnVFOA.handleBSFChange");
             handleBSFChange(oldBand, newBand, oldMode, newMode, oldFilter, newFilter, oldFreq, newFreq, oldCentreF, newCentreF, oldCTUN, newCTUN, oldZoomSlider, newZoomSlider);
 
             //max bin display
             if (_display_max_bin_enabled[rx-1] && rx == 1) setupDisplayMaxBinDetect(rx, false, true);
 
+            BandUiDiagnostics.Stage("Console.OnVFOA.handleVfoSyncFrequency");
             handleVfoSyncFrequency(rx, false);
         }
         private void OnVFOBFrequencyChangeHandler(Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider, double offset, int rx)

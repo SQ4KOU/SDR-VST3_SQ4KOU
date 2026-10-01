@@ -7521,6 +7521,7 @@ namespace Thetis
 		}
 		public void OnVFOAFrequencyChangeHandler(Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider, double offset, int rx)
 		{
+            BandUiDiagnostics.Stage("TCI.OnVFOA.enter", $"rx={rx} {oldFreq:F6}->{newFreq:F6}");
             bool bVFOaUseRX2;
             if (console != null)
                 bVFOaUseRX2 = console.RX2Enabled && UseRX1VFOaForRX2VFOa;
@@ -7543,11 +7544,13 @@ namespace Thetis
             
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-					socketListener.VFOChange(vfod);
+					BandUiDiagnostics.Stage("TCI.OnVFOA.VFOChange");
+                    socketListener.VFOChange(vfod);
             }
         }
 		public void OnVFOBFrequencyChangeHandler(Band oldBand, Band newBand, DSPMode oldMode, DSPMode newMode, Filter oldFilter, Filter newFilter, double oldFreq, double newFreq, double oldCentreF, double newCentreF, bool oldCTUN, bool newCTUN, int oldZoomSlider, int newZoomSlider, double offset, int rx)
 		{
+            BandUiDiagnostics.Stage("TCI.OnVFOB.enter", $"rx={rx} {oldFreq:F6}->{newFreq:F6}");
             TCPIPtciSocketListener.VFOData vfod = new TCPIPtciSocketListener.VFOData()
             {
                 cen = false,
@@ -7599,24 +7602,29 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 		}
 		public void OnModeChangeHandler(int rx, DSPMode oldMode, DSPMode newMode, Band oldBand, Band newBand)
 		{
+            BandUiDiagnostics.Stage("TCI.OnModeChange.enter", $"rx={rx} {oldMode}->{newMode}");
 			
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
-					socketListener.ModeChange(rx,oldMode,newMode, oldBand, newBand);
+					BandUiDiagnostics.Stage("TCI.OnModeChange.ModeChange");
+                    socketListener.ModeChange(rx,oldMode,newMode, oldBand, newBand);
 				}
 		}
 		public void OnBandChangeHandler(int rx, Band oldBand, Band newBand)
 		{
+            BandUiDiagnostics.Stage("TCI.OnBandChange.enter", $"rx={rx} {oldBand}->{newBand}");
 			
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
-					socketListener.BandChange(rx, oldBand, newBand);
+					BandUiDiagnostics.Stage("TCI.OnBandChange.BandChange");
+                    socketListener.BandChange(rx, oldBand, newBand);
                 if (rx == 1)
                     socketListener.SQ4KOUCacheRXBand(newBand);
 				}
 		}
 		public void OnCentreFrequencyChanged(int rx, double oldFreq, double newFreq, Band band, double offset)
 		{
+            BandUiDiagnostics.Stage("TCI.OnCentre.enter", $"rx={rx} {oldFreq:F6}->{newFreq:F6}");
 			//only want to send IF with this if CTUN is enabled
 			bool bCTun = rx == 1 ? console.ClickTuneDisplay : console.ClickTuneRX2Display;
 
@@ -7635,23 +7643,28 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-                socketListener.CentreChange(vfod);
+                BandUiDiagnostics.Stage("TCI.OnCentre.CentreChange");
+                    socketListener.CentreChange(vfod);
             }
         }
 		public void OnFilterChanged(int rx, Filter oldFilter, Filter newFilter, Band band, int low, int high, string sName)
 		{
+            BandUiDiagnostics.Stage("TCI.OnFilter.enter", $"rx={rx} {oldFilter}->{newFilter}");
 			
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
-					socketListener.FilterChange(rx, oldFilter, newFilter, band, low, high);
+					BandUiDiagnostics.Stage("TCI.OnFilter.FilterChange");
+                    socketListener.FilterChange(rx, oldFilter, newFilter, band, low, high);
 				}
 		}
 		public void OnFilterEdgesChanged(int rx, Filter filter, Band band, int low, int high, string sName, int max_width, int max_shift)
 		{
+            BandUiDiagnostics.Stage("TCI.OnFilterEdges.enter", $"rx={rx} filter={filter}");
 			
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 				{
-					socketListener.FilterEdgesChange(rx, filter, band, low, high);
+					BandUiDiagnostics.Stage("TCI.OnFilterEdges.FilterEdgesChange");
+                    socketListener.FilterEdgesChange(rx, filter, band, low, high);
 				}
 		}
         public void OnTXFiltersChanged(int low, int high)
@@ -8196,6 +8209,7 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
         }
         private void OnAntennaRXChanged(Band band, int antenna, bool old_state, bool new_state)
         {
+            BandUiDiagnostics.Stage("TCI.OnAntennaRX.enter", $"band={band} ant={antenna} {old_state}->{new_state}");
             if (!new_state) return;
             Band activeBand = console.ThreadSafeTCIAccessor.RX1Band;
             if (band != activeBand) return;
@@ -8207,6 +8221,7 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 
         private void OnAntennaTXChanged(Band band, int antenna, bool old_state, bool new_state)
         {
+            BandUiDiagnostics.Stage("TCI.OnAntennaTX.enter", $"band={band} ant={antenna} {old_state}->{new_state}");
             if (!new_state) return;
             Band activeBand = console.ThreadSafeTCIAccessor.TXBand;
             if (band != activeBand) return;
@@ -8218,6 +8233,7 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
 
 		private void OnTXFrequencyChanged(double old_frequency, double new_frequency, Band old_band, Band new_band, bool rx2_enabled, bool tx_vfob, double centre_freq)
 		{
+            BandUiDiagnostics.Stage("TCI.OnTXFrequency.enter", $"{old_frequency:F6}->{new_frequency:F6} band={old_band}->{new_band}");
             TCPIPtciSocketListener.VFOData vfod = new TCPIPtciSocketListener.VFOData()
             {
                 cen = false,
@@ -8240,7 +8256,8 @@ foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             
 foreach (TCPIPtciSocketListener socketListener in m_socketListenersSnapshot)
             {
-                socketListener.TXFrequencyChange(vfod);
+                BandUiDiagnostics.Stage("TCI.OnTXFrequency.TXFrequencyChange");
+                    socketListener.TXFrequencyChange(vfod);
                 // A TX band/VFO/SPLIT change can select another antenna while still in RX.
                 // Cache only; the 250 ms socket worker publishes it off the callback path.
                 socketListener.SQ4KOUCacheTXBand(new_band);
