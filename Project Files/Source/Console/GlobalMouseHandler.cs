@@ -104,6 +104,7 @@ namespace Thetis
         private Point _nativePanelDragMouseStart;
         private Point? _nativeModeSpecificSharedLocation;
         private bool _nativeApplyingModeSpecificLocation;
+        private bool _nativeModeSpecificRestorePending;
         private readonly Dictionary<string, Point> _nativeAbsolutePanelLocations =
             new Dictionary<string, Point>(StringComparer.Ordinal);
         private bool _nativeApplyingAbsolutePanelLocation;
@@ -274,6 +275,20 @@ namespace Thetis
             return Array.IndexOf(_nativeModeSpecificPanelNames, name) >= 0;
         }
 
+        private void QueueNativeModeSpecificRestore()
+        {
+            if (_nativeModeSpecificRestorePending || IsDisposed || Disposing)
+                return;
+
+            _nativeModeSpecificRestorePending = true;
+            BeginInvoke((MethodInvoker)delegate
+            {
+                _nativeModeSpecificRestorePending = false;
+                if (!IsDisposed && !Disposing && _nativePanelDragPrimary == null)
+                    ApplyNativeModeSpecificSharedLocation();
+            });
+        }
+
         private void NativeModeSpecificPanel_VisibleChanged(object sender, EventArgs e)
         {
             if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
@@ -283,14 +298,10 @@ namespace Thetis
             if (panel == null || !panel.Visible || IsDisposed || Disposing)
                 return;
 
-            // Native mode switching can re-apply the designer Location while changing
-            // which mode-specific panel is visible. Re-assert the operator-selected
-            // shared position after that layout pass has completed.
-            BeginInvoke((MethodInvoker)delegate
-            {
-                if (!IsDisposed && !Disposing)
-                    ApplyNativeModeSpecificSharedLocation();
-            });
+            // Native mode switching can emit several Visible/Location events in one
+            // BAND/Mode transition. Coalesce them to a single deferred restore so the
+            // UI queue cannot accumulate redundant layout work during rapid band changes.
+            QueueNativeModeSpecificRestore();
         }
 
         private void NativeModeSpecificPanel_LocationChanged(object sender, EventArgs e)
@@ -298,7 +309,6 @@ namespace Thetis
             if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
                 return;
 
-            // During an operator Shift-drag the location change is intentional.
             if (_nativePanelDragPrimary != null &&
                 IsNativeModeSpecificPanelName(_nativePanelDragPrimary.Name))
                 return;
@@ -311,17 +321,7 @@ namespace Thetis
             if (panel.Location == shared)
                 return;
 
-            // MODE/layout code can re-apply designer coordinates without changing
-            // visibility. Restore the shared operator-selected position after that
-            // layout pass completes.
-            BeginInvoke((MethodInvoker)delegate
-            {
-                if (!IsDisposed && !Disposing &&
-                    _nativePanelDragPrimary == null)
-                {
-                    ApplyNativeModeSpecificSharedLocation();
-                }
-            });
+            QueueNativeModeSpecificRestore();
         }
 
         private void ApplyNativeModeSpecificSharedLocation()
