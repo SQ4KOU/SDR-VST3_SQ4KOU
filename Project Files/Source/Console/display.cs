@@ -1436,6 +1436,12 @@ namespace Thetis
         }
         private static void OnCentreFrequencyChanged(int rx, double oldFreq, double newFreq, Band band, double offset)
         {
+            // RX2 display state is not active when RX2 is disabled. Avoid doing
+            // spectrum/blob maintenance for the inactive pane on every synced
+            // VFO/centre-frequency change.
+            if (rx == 2 && (console == null || !console.RX2Enabled))
+                return;
+
             if (rx == 1)
             {
                 if (Math.Abs(oldFreq - newFreq) > 0.5) FastAttackNoiseFloorRX1 = true;
@@ -5330,10 +5336,12 @@ namespace Thetis
             else
                 maximums = m_rx2_spectrumPeaks;
 
-            Parallel.For(0, maximums.Length, (i) =>
-            {
+            // This is called synchronously from the WinForms UI frequency-change
+            // path. Parallel.For can block the UI for seconds when the ThreadPool
+            // is busy; the arrays are display-width sized, so a simple loop is both
+            // deterministic and substantially cheaper here.
+            for (int i = 0; i < maximums.Length; i++)
                 maximums[i].max_dBm = float.MinValue;
-            });
         }
         static public void ResetBlobMaximums(int rx, bool bClear = false)
         {
