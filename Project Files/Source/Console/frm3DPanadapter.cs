@@ -58,6 +58,8 @@ namespace Thetis
         private NumericUpDownTS ud3DEnvelopeDecay;
         private LabelTS lbl3DEnvelopeWidth;
         private NumericUpDownTS ud3DEnvelopeWidth;
+        private LabelTS lbl3DFrontSlope;
+        private NumericUpDownTS ud3DFrontSlope;
         private ButtonTS btn3DResetDefaults;
 
         public frm3DPanadapter()
@@ -141,6 +143,8 @@ namespace Thetis
             this.ud3DEnvelopeDecay = new System.Windows.Forms.NumericUpDownTS();
             this.lbl3DEnvelopeWidth = new System.Windows.Forms.LabelTS();
             this.ud3DEnvelopeWidth = new System.Windows.Forms.NumericUpDownTS();
+            this.lbl3DFrontSlope = new System.Windows.Forms.LabelTS();
+            this.ud3DFrontSlope = new System.Windows.Forms.NumericUpDownTS();
             this.btn3DResetDefaults = new System.Windows.Forms.ButtonTS();
             this.SuspendLayout();
             //
@@ -487,13 +491,36 @@ namespace Thetis
             this.toolTip1.SetToolTip(this.ud3DEnvelopeWidth, "Frequency-domain envelope width in display bins. Higher values produce a broader, smoother upper envelope.");
             this.ud3DEnvelopeWidth.ValueChanged += new System.EventHandler(this.ud3DEnvelopeWidth_ValueChanged);
             //
+            // lbl3DFrontSlope
+            //
+            this.lbl3DFrontSlope.Image = null;
+            this.lbl3DFrontSlope.Location = new System.Drawing.Point(12, 380);
+            this.lbl3DFrontSlope.Name = "lbl3DFrontSlope";
+            this.lbl3DFrontSlope.Size = new System.Drawing.Size(105, 16);
+            this.lbl3DFrontSlope.TabIndex = 28;
+            this.lbl3DFrontSlope.Text = "Front Slope %:";
+            //
+            // ud3DFrontSlope
+            //
+            this.ud3DFrontSlope.DecimalPlaces = 0;
+            this.ud3DFrontSlope.Increment = 5;
+            this.ud3DFrontSlope.Location = new System.Drawing.Point(120, 377);
+            this.ud3DFrontSlope.Maximum = 100;
+            this.ud3DFrontSlope.Minimum = 0;
+            this.ud3DFrontSlope.Name = "ud3DFrontSlope";
+            this.ud3DFrontSlope.Size = new System.Drawing.Size(70, 20);
+            this.ud3DFrontSlope.TabIndex = 29;
+            this.ud3DFrontSlope.Value = 40;
+            this.toolTip1.SetToolTip(this.ud3DFrontSlope, "0% keeps the legacy vertical front wall; higher values incline the leading surface into the first history rows.");
+            this.ud3DFrontSlope.ValueChanged += new System.EventHandler(this.ud3DFrontSlope_ValueChanged);
+            //
             // btn3DResetDefaults
             //
             this.btn3DResetDefaults.Image = null;
-            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 389);
+            this.btn3DResetDefaults.Location = new System.Drawing.Point(12, 413);
             this.btn3DResetDefaults.Name = "btn3DResetDefaults";
             this.btn3DResetDefaults.Size = new System.Drawing.Size(208, 26);
-            this.btn3DResetDefaults.TabIndex = 28;
+            this.btn3DResetDefaults.TabIndex = 30;
             this.btn3DResetDefaults.Text = "Reset Defaults";
             this.toolTip1.SetToolTip(this.btn3DResetDefaults, "Reset all 3D panadapter settings to defaults.");
             this.btn3DResetDefaults.Click += new System.EventHandler(this.btn3DResetDefaults_Click);
@@ -502,7 +529,7 @@ namespace Thetis
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(232, 427);
+            this.ClientSize = new System.Drawing.Size(232, 451);
             this.Controls.Add(this.chk3DWaterfallSync);
             this.Controls.Add(this.chk3DSideWalls);
             this.Controls.Add(this.lbl3DXOffset);
@@ -532,6 +559,8 @@ namespace Thetis
             this.Controls.Add(this.ud3DEnvelopeDecay);
             this.Controls.Add(this.lbl3DEnvelopeWidth);
             this.Controls.Add(this.ud3DEnvelopeWidth);
+            this.Controls.Add(this.lbl3DFrontSlope);
+            this.Controls.Add(this.ud3DFrontSlope);
             this.Controls.Add(this.btn3DResetDefaults);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -561,6 +590,7 @@ namespace Thetis
                 : Display.Pan3DSourceMode.Spectrum;
             Display.Pan3DEnvelopeDecayDbPerSec = (float)ud3DEnvelopeDecay.Value;
             Display.Pan3DEnvelopeWidth = (int)ud3DEnvelopeWidth.Value;
+            Display.Pan3DFrontSlope = (float)ud3DFrontSlope.Value / 100f;
             Display.Pan3DLineColor = clrbtn3DLineColor.Color;
             Display.Pan3DFillColorEnabled = chk3DFillColorEnable.Checked;
             Display.Pan3DFillColor = clrbtn3DFillColor.Color;
@@ -673,6 +703,12 @@ namespace Thetis
             Display.Pan3DEnvelopeWidth = v;
         }
 
+        private void ud3DFrontSlope_ValueChanged(object sender, EventArgs e)
+        {
+            if (_initializing) return;
+            Display.Pan3DFrontSlope = (float)ud3DFrontSlope.Value / 100f;
+        }
+
         private void clrbtn3DLineColor_Changed(object sender, EventArgs e)
         {
             if (_initializing) return;
@@ -719,6 +755,7 @@ namespace Thetis
             combo3DSource.SelectedIndex = 0;
             ud3DEnvelopeDecay.Value = 30.0m;
             ud3DEnvelopeWidth.Value = 9;
+            ud3DFrontSlope.Value = 40;
             clrbtn3DLineColor.Color = Color.Aquamarine;
             chk3DFillColorEnable.Checked = false;
             clrbtn3DFillColor.Color = Color.Aquamarine;
