@@ -619,51 +619,70 @@ namespace Thetis
         private static void PushPan3DFrame(float[] source, int cols, bool tx, long nowTicks)
         {
             float[][] hist = _3dHistoryBuffer;
-            float[][] envHist = _3dEnvelopeHistoryBuffer;
             float[][] med = _3dMedianPrev;
             int head = _3dHistoryHead;
 
-            if (source == null || cols < 1 || hist == null || envHist == null || med == null ||
+            if (source == null || cols < 1 || hist == null || med == null ||
                 head < 0 || head >= Max3DHistoryLines)
                 return;
 
             if (hist[head] == null || hist[head].Length < cols)
                 hist[head] = new float[cols];
-            if (envHist[head] == null || envHist[head].Length < cols)
-                envHist[head] = new float[cols];
 
             bool useMedian = _3dMedianCount >= 2 &&
                 med[0] != null && med[0].Length >= cols &&
                 med[1] != null && med[1].Length >= cols;
 
-            float[] env = tx ? _3dEnvelopeTX : _3dEnvelopeRX;
-            bool envValid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
-            long lastTicks = tx ? _3dEnvelopeTXLastTicks : _3dEnvelopeRXLastTicks;
-            float[][] envMed = tx ? _3dEnvelopeMedianTX : _3dEnvelopeMedianRX;
-            float[] spectralScratch = tx ? _3dEnvelopeSpectralScratchTX : _3dEnvelopeSpectralScratchRX;
-            int envMedCount = tx ? _3dEnvelopeMedianTXCount : _3dEnvelopeMedianRXCount;
-            bool useEnvelopeMedian = envMedCount >= 2 && envMed != null &&
-                envMed[0] != null && envMed[0].Length >= cols &&
-                envMed[1] != null && envMed[1].Length >= cols;
+            // IMPORTANT: the original Spectrum path must stay lightweight. Envelope
+            // processing is deliberately opt-in; when Spectrum is selected we do not
+            // allocate/update envelope buffers and we do not run the spectral peak window.
+            bool envelopeMode = _pan3DSource == Pan3DSourceMode.Envelope;
 
-            if (env == null || env.Length < cols)
+            float[][] envHist = null;
+            float[] env = null;
+            bool envValid = false;
+            long lastTicks = 0;
+            float[][] envMed = null;
+            float[] spectralScratch = null;
+            int envMedCount = 0;
+            bool useEnvelopeMedian = false;
+
+            if (envelopeMode)
             {
-                env = new float[cols];
-                envValid = false;
-                if (tx) _3dEnvelopeTX = env; else _3dEnvelopeRX = env;
+                envHist = _3dEnvelopeHistoryBuffer;
+                if (envHist == null) return;
+
+                if (envHist[head] == null || envHist[head].Length < cols)
+                    envHist[head] = new float[cols];
+
+                env = tx ? _3dEnvelopeTX : _3dEnvelopeRX;
+                envValid = tx ? _3dEnvelopeTXValid : _3dEnvelopeRXValid;
+                lastTicks = tx ? _3dEnvelopeTXLastTicks : _3dEnvelopeRXLastTicks;
+                envMed = tx ? _3dEnvelopeMedianTX : _3dEnvelopeMedianRX;
+                spectralScratch = tx ? _3dEnvelopeSpectralScratchTX : _3dEnvelopeSpectralScratchRX;
+                envMedCount = tx ? _3dEnvelopeMedianTXCount : _3dEnvelopeMedianRXCount;
+                useEnvelopeMedian = envMedCount >= 2 && envMed != null &&
+                    envMed[0] != null && envMed[0].Length >= cols &&
+                    envMed[1] != null && envMed[1].Length >= cols;
+
+                if (env == null || env.Length < cols)
+                {
+                    env = new float[cols];
+                    envValid = false;
+                    if (tx) _3dEnvelopeTX = env; else _3dEnvelopeRX = env;
+                }
+
+                if (spectralScratch == null || spectralScratch.Length < cols)
+                {
+                    spectralScratch = new float[cols];
+                    if (tx) _3dEnvelopeSpectralScratchTX = spectralScratch;
+                    else _3dEnvelopeSpectralScratchRX = spectralScratch;
+                }
             }
 
-            if (spectralScratch == null || spectralScratch.Length < cols)
-            {
-                spectralScratch = new float[cols];
-                if (tx) _3dEnvelopeSpectralScratchTX = spectralScratch;
-                else _3dEnvelopeSpectralScratchRX = spectralScratch;
-            }
-
-            double dt = envValid && lastTicks > 0 ? (nowTicks - lastTicks) / 10000000.0 : 0.0;
-            if (dt < 0.0) dt = 0.0;
-            float decay = _pan3DEnvelopeDecayDbPerSec * (float)dt;
-
+            // Preserve the exact pre-envelope Spectrum history path. In Envelope mode,
+            // prepare the isolated spectral source in the same pass so there is no
+            // additional full-buffer traversal before the spatial envelope stage.
             for (int c = 0; c < cols; c++)
             {
                 float sample;
@@ -679,62 +698,92 @@ namespace Thetis
                     sample = source[c];
                 }
 
-                // Spectrum mode keeps the exact historical input used before this feature.
                 hist[head][c] = sample;
 
-                // Envelope starts from an RX/TX-isolated temporal median. The spatial
-                // upper-envelope pass below is what intentionally makes its geometry
-                // visibly different from the raw spectrum.
-                if (useEnvelopeMedian)
+                if (envelopeMode)
                 {
-                    float ea = source[c];
-                    float eb = envMed[0][c];
-                    float ed = envMed[1][c];
-                    spectralScratch[c] = Math.Max(Math.Min(ea, eb), Math.Min(Math.Max(ea, eb), ed));
-                }
-                else
-                {
-                    spectralScratch[c] = source[c];
+                    if (useEnvelopeMedian)
+                    {
+                        float ea = source[c];
+                        float eb = envMed[0][c];
+                        float ed = envMed[1][c];
+                        spectralScratch[c] = Math.Max(Math.Min(ea, eb), Math.Min(Math.Max(ea, eb), ed));
+                    }
+                    else
+                    {
+                        spectralScratch[c] = source[c];
+                    }
                 }
             }
 
-            // Spectral upper envelope: local peak window across frequency. Blending
-            // the local maximum with the centre bin preserves narrow-signal position
-            // while suppressing the jagged FFT "grass". The temporal follower is
-            // applied afterwards, so this is a true frequency-domain envelope rather
-            // than only a per-bin peak hold.
-            int radius = Math.Max(0, (_pan3DEnvelopeWidth - 1) / 2);
-            for (int c = 0; c < cols; c++)
+            if (envelopeMode)
             {
-                int lo = Math.Max(0, c - radius);
-                int hi = Math.Min(cols - 1, c + radius);
-                float localPeak = spectralScratch[c];
-                for (int k = lo; k <= hi; k++)
-                    if (spectralScratch[k] > localPeak) localPeak = spectralScratch[k];
+                double dt = envValid && lastTicks > 0 ? (nowTicks - lastTicks) / 10000000.0 : 0.0;
+                if (dt < 0.0) dt = 0.0;
+                float decay = _pan3DEnvelopeDecayDbPerSec * (float)dt;
 
-                float envelopeSample = spectralScratch[c] * 0.30f + localPeak * 0.70f;
-
-                float e;
-                if (!envValid)
+                // Frequency-domain upper envelope. This intentionally runs only when
+                // Envelope is selected; Spectrum no longer pays this O(cols*width) cost.
+                int radius = Math.Max(0, (_pan3DEnvelopeWidth - 1) / 2);
+                for (int c = 0; c < cols; c++)
                 {
-                    e = envelopeSample;
+                    int lo = Math.Max(0, c - radius);
+                    int hi = Math.Min(cols - 1, c + radius);
+                    float localPeak = spectralScratch[c];
+                    for (int k = lo; k <= hi; k++)
+                        if (spectralScratch[k] > localPeak) localPeak = spectralScratch[k];
+
+                    float envelopeSample = spectralScratch[c] * 0.30f + localPeak * 0.70f;
+
+                    float e;
+                    if (!envValid)
+                    {
+                        e = envelopeSample;
+                    }
+                    else if (envelopeSample >= env[c])
+                    {
+                        e = envelopeSample;
+                    }
+                    else
+                    {
+                        e = Math.Max(envelopeSample, env[c] - decay);
+                    }
+
+                    env[c] = e;
+                    envHist[head][c] = e;
                 }
-                else if (envelopeSample >= env[c])
+
+                // RX/TX-isolated envelope median history.
+                if (envMed == null)
                 {
-                    e = envelopeSample; // instantaneous attack
+                    envMed = new float[2][];
+                    if (tx) _3dEnvelopeMedianTX = envMed; else _3dEnvelopeMedianRX = envMed;
+                }
+                if (envMed[1] == null || envMed[1].Length < cols)
+                    envMed[1] = new float[cols];
+                if (envMed[0] != null && envMed[0].Length >= cols)
+                    Array.Copy(envMed[0], envMed[1], cols);
+                if (envMed[0] == null || envMed[0].Length < cols)
+                    envMed[0] = new float[cols];
+                Array.Copy(source, envMed[0], cols);
+                if (envMedCount < int.MaxValue) envMedCount++;
+                if (tx) _3dEnvelopeMedianTXCount = envMedCount;
+                else _3dEnvelopeMedianRXCount = envMedCount;
+
+                if (tx)
+                {
+                    _3dEnvelopeTXValid = true;
+                    _3dEnvelopeTXLastTicks = nowTicks;
                 }
                 else
                 {
-                    e = Math.Max(envelopeSample, env[c] - decay);
+                    _3dEnvelopeRXValid = true;
+                    _3dEnvelopeRXLastTicks = nowTicks;
                 }
-
-                env[c] = e;
-                envHist[head][c] = e;
             }
 
-            // Shift the existing temporal-median history exactly as the original
-            // Spectrum path did; both Spectrum and Envelope are fed from this same
-            // impulse-rejected sample.
+            // Original temporal-median history used by Spectrum and as the raw source
+            // history while Envelope is active.
             if (med[1] == null || med[1].Length < cols)
                 med[1] = new float[cols];
             if (med[0] != null && med[0].Length >= cols)
@@ -743,34 +792,6 @@ namespace Thetis
                 med[0] = new float[cols];
             Array.Copy(source, med[0], cols);
             if (_3dMedianCount < int.MaxValue) _3dMedianCount++;
-
-            // Independent envelope median history for RX/TX.
-            if (envMed == null)
-            {
-                envMed = new float[2][];
-                if (tx) _3dEnvelopeMedianTX = envMed; else _3dEnvelopeMedianRX = envMed;
-            }
-            if (envMed[1] == null || envMed[1].Length < cols)
-                envMed[1] = new float[cols];
-            if (envMed[0] != null && envMed[0].Length >= cols)
-                Array.Copy(envMed[0], envMed[1], cols);
-            if (envMed[0] == null || envMed[0].Length < cols)
-                envMed[0] = new float[cols];
-            Array.Copy(source, envMed[0], cols);
-            if (envMedCount < int.MaxValue) envMedCount++;
-            if (tx) _3dEnvelopeMedianTXCount = envMedCount;
-            else _3dEnvelopeMedianRXCount = envMedCount;
-
-            if (tx)
-            {
-                _3dEnvelopeTXValid = true;
-                _3dEnvelopeTXLastTicks = nowTicks;
-            }
-            else
-            {
-                _3dEnvelopeRXValid = true;
-                _3dEnvelopeRXLastTicks = nowTicks;
-            }
 
             _3dHistoryHead = (head + 1) % Max3DHistoryLines;
             if (_3dHistoryCount < Max3DHistoryLines) _3dHistoryCount++;
