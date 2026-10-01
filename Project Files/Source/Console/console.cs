@@ -47150,15 +47150,16 @@ namespace Thetis
             double totalMs = (perf4 - perf0) * tickToMs;
             if (totalMs >= 100.0)
             {
-                Common.LogString(String.Format(System.Globalization.CultureInfo.InvariantCulture,
-                    "BAND PERF total={0:F1}ms hpOff={1:F1}ms setBand={2:F1}ms display={3:F1}ms hpOn={4:F1}ms target={5} freq={6:F6}",
-                    totalMs,
-                    (perf1 - perf0) * tickToMs,
-                    (perf2 - perf1) * tickToMs,
-                    (perf3 - perf2) * tickToMs,
-                    (perf4 - perf3) * tickToMs,
-                    bse.Band,
-                    bse.Frequency));
+                BandUiDiagnostics.Stage("BAND PERF",
+                    String.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "total={0:F1}ms hpOff={1:F1}ms setBand={2:F1}ms display={3:F1}ms hpOn={4:F1}ms target={5} freq={6:F6}",
+                        totalMs,
+                        (perf1 - perf0) * tickToMs,
+                        (perf2 - perf1) * tickToMs,
+                        (perf3 - perf2) * tickToMs,
+                        (perf4 - perf3) * tickToMs,
+                        bse.Band,
+                        bse.Frequency));
             }
                     BandUiDiagnostics.Stage("setRX1BandFromBandStackEntry.exit");
         }
