@@ -1617,7 +1617,11 @@ namespace Thetis
                     m_nDecimation = value;
                 }
 
-                if (old != m_nDecimation) N1MM.Resize();
+                if (old != m_nDecimation)
+                {
+                    ResetPan3DEnvelopeState();
+                    N1MM.Resize();
+                }
             }
         }
         private static int rx_display_low = -4000;
@@ -1632,6 +1636,7 @@ namespace Thetis
                     ResetSpectrumPeaks(1);
 
                     rx_display_low = value;
+                    ResetPan3DEnvelopeState();
 
                     N1MM.Resize(1);
                 }
@@ -1650,6 +1655,7 @@ namespace Thetis
                     ResetSpectrumPeaks(1);
 
                     rx_display_high = value;
+                    ResetPan3DEnvelopeState();
 
                     N1MM.Resize(1);
                 }
@@ -1696,14 +1702,28 @@ namespace Thetis
         public static int TXDisplayLow
         {
             get { return tx_display_low; }
-            set { tx_display_low = value; }
+            set
+            {
+                if (tx_display_low != value)
+                {
+                    tx_display_low = value;
+                    ResetPan3DEnvelopeState();
+                }
+            }
         }
 
         private static int tx_display_high = 4000;
         public static int TXDisplayHigh
         {
             get { return tx_display_high; }
-            set { tx_display_high = value; }
+            set
+            {
+                if (tx_display_high != value)
+                {
+                    tx_display_high = value;
+                    ResetPan3DEnvelopeState();
+                }
+            }
         }
 
         private static int rx_spectrum_display_low = -4000;
@@ -6301,7 +6321,7 @@ namespace Thetis
                     point.Y = Y;
 
                     int analysisY = Y;
-                    if (!ReferenceEquals(renderData, data))
+                    if (!object.ReferenceEquals(renderData, data))
                     {
                         if (live3DMapping)
                         {
