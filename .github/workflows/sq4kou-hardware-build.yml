@@ -30,6 +30,16 @@ jobs:
       - name: Build
         run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
 
+      - name: Audit legacy PS2 calls
+        shell: pwsh
+        run: |
+          $legacy = 'SetPSPtol|SetPSPinMode|SetPSMapMode|SetPSStabilize|SetPSIntsAndSpi'
+          Get-ChildItem "Project Files/Source/Console" -Recurse -Filter *.cs | ForEach-Object {
+            Select-String -Path $_.FullName -Pattern $legacy | ForEach-Object {
+              Write-Host ("PS2REF {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim())
+            }
+          }
+
       - name: Verify WDSP 2.10 ABI
         shell: pwsh
         run: |
