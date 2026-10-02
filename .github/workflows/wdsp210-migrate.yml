@@ -243,7 +243,46 @@ jobs:
         run: |
           $dll = "Project Files/bin/x64/Release/wdsp.dll"
           if (-not (Test-Path $dll)) { throw "wdsp.dll not found after build" }
-          $exports = & dumpbin /exports $dll
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsRoot) { throw "Visual Studio VC tools installation not found" }
+
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsRoot "VC\Tools\MSVC") -Recurse -Filter dumpbin.exe |
+            Where-Object { $_.FullName -match '\\bin\\Hostx64\\x64\\dumpbin\.exe
+          foreach ($name in @(
+            "GetWDSPVersion",
+            "SetRXANNRRun",
+            "SetRXANNRModel",
+            "SetNNRModelPath",
+            "GetPSDisp",
+            "SetRXARNNRRun",
+            "SetRXASBNRRun",
+            "SetRXACBLPosition"
+          )) {
+            if (-not ($exports | Select-String -SimpleMatch $name)) { throw "Missing export: $name" }
+          }
+
+      - name: Commit migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Project Files/Source/wdsp" "Project Files/Source/Console/Versions.cs" ".github/workflows/sq4kou-hardware-build.yml" "Documentation/WDSP_2_10_MIGRATION.md"
+          if (git diff --cached --quiet) {
+            Write-Host "No migration changes to commit."
+            exit 0
+          }
+          git commit -m "Migrate WDSP core to 2.10"
+          git push origin HEAD:feature/sq4kou-hardware
+ } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $dumpbin) { throw "dumpbin.exe not found under Visual Studio VC tools" }
+
+          $exports = & $dumpbin.FullName /exports $dll
           foreach ($name in @(
             "GetWDSPVersion",
             "SetRXANNRRun",
