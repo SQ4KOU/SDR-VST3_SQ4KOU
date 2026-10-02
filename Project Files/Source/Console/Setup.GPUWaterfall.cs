@@ -880,14 +880,17 @@ namespace Thetis
 		ComboBox.ObjectCollection items = combo.Items;
 		object[] items2 = array;
 		items.AddRange(items2);
-		if (Array.IndexOf(array, value) >= 0)
-		{
-			combo.Text = value;
-		}
+
+		// Palette items are injected before the normal Options restore. The
+		// original designer/default uses lower-case "enhanced", while the
+		// canonical runtime item is "Enhanced". Preserve that selection
+		// case-insensitively instead of falling back to Console 256.
+		int selected = Array.FindIndex(array,
+			item => string.Equals(item, value, StringComparison.OrdinalIgnoreCase));
+		if (selected >= 0)
+			combo.SelectedIndex = selected;
 		else
-		{
-			combo.Text = "Console 256";
-		}
+			combo.SelectedIndex = Array.IndexOf(array, "Enhanced");
 	}
 
 
