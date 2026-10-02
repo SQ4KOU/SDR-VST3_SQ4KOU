@@ -58,7 +58,7 @@ jobs:
             "cfcomp.c", "cfcomp.h",
             "eq.c",
             "fmsq.c",
-            "TXA.h"
+            "ssql.c"
           )
           foreach ($name in $restore) {
             Copy-Item (Join-Path $backup $name) (Join-Path $wdsp $name) -Force
@@ -79,7 +79,6 @@ jobs:
             Copy-Item $out (Join-Path $wdsp $name) -Force
           }
 
-          Merge-3Way "TXA.c"
           Merge-3Way "eq.h"
 
           foreach ($name in @("RXA.c", "RXA.h", "rnnr.c", "rnnr.h", "sbnr.c", "sbnr.h")) {
