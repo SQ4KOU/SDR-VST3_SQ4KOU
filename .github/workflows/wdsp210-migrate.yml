@@ -222,7 +222,8 @@ jobs:
           )
           '@ | python -
 
-          if (Select-String -Path "$wdsp\*.c","$wdsp\*.h" -Pattern '<<<<<<<|=======|>>>>>>>' -Quiet) {
+          if (Select-String -Path "$wdsp\*.c","$wdsp\*.h" -Pattern '^(<<<<<<<|=======|>>>>>>>)' -Quiet) {
+            Select-String -Path "$wdsp\*.c","$wdsp\*.h" -Pattern '^(<<<<<<<|=======|>>>>>>>)' | ForEach-Object { Write-Host $_ }
             throw "Conflict markers remain in WDSP sources"
           }
           if (-not (Select-String -Path "$wdsp\version.c" -Pattern 'version = 210' -Quiet)) {
