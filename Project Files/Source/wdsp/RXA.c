@@ -350,23 +350,6 @@ void create_rxa (int channel)
 		-25.0,											// mask floor
 		1);												// output mode, 1=>(q=0.0)
 
-	// Zeus: NR3 (RNNoise) and NR4 (libspecbleach) — Thetis-lineage blocks
-	// re-spliced onto the upstream chain; see ZEUS-PATCHES.md.
-	rxa[channel].rnnr.p = create_rnnr (
-		0,												// run
-		0,												// position
-		ch[channel].dsp_size,							// buffer size
-		rxa[channel].midbuff,							// input buffer
-		rxa[channel].midbuff,							// output buffer
-		ch[channel].dsp_rate);							// samplerate
-	rxa[channel].sbnr.p = create_sbnr (
-		0,												// run
-		0,												// position
-		ch[channel].dsp_size,							// buffer size
-		rxa[channel].midbuff,							// input buffer
-		rxa[channel].midbuff,							// output buffer
-		ch[channel].dsp_rate);							// samplerate
-
 	// AGC
 	rxa[channel].agc.p = create_wcpagc (
 		1,												// run
@@ -444,9 +427,7 @@ void create_rxa (int channel)
 		rxa[channel].midbuff,							// pointer to output buffer
 		0,												// mode
 		ch[channel].dsp_rate,							// sample rate
-		0.02,								// tau
-		0);									// position: 0 before AGC, 1 after AGC
-
+		0.02);											// tau
 
 	// double-pole CW filter
 	rxa[channel].doublepole.p = create_doublepole (
@@ -592,8 +573,6 @@ void destroy_rxa (int channel)
 	destroy_bandpass (rxa[channel].bp1.p);
 	destroy_meter (rxa[channel].agcmeter.p);
 	destroy_wcpagc (rxa[channel].agc.p);
-	destroy_sbnr (rxa[channel].sbnr.p);		// Zeus NR4
-	destroy_rnnr (rxa[channel].rnnr.p);		// Zeus NR3
 	destroy_nnr (rxa[channel].nnr.p);
 	destroy_emnr (rxa[channel].emnr.p);
 	destroy_anr (rxa[channel].anr.p);
@@ -643,7 +622,6 @@ void flush_rxa (int channel)
 	flush_anr (rxa[channel].anr.p);
 	flush_emnr (rxa[channel].emnr.p);
 	flush_nnr (rxa[channel].nnr.p);
-	// Zeus NR3 / NR4 have no flush entry point (Thetis lineage).
 	flush_wcpagc (rxa[channel].agc.p);
 	flush_meter (rxa[channel].agcmeter.p);
 	flush_bandpass (rxa[channel].bp1.p);
@@ -683,21 +661,16 @@ void xrxa (int channel)
 	xanr (rxa[channel].anr.p, 0);
 	xemnr (rxa[channel].emnr.p, 0);
 	xnnr (rxa[channel].nnr.p, 0);
-	xrnnr (rxa[channel].rnnr.p, 0);		// Zeus NR3
-	xsbnr (rxa[channel].sbnr.p, 0);		// Zeus NR4
 	xbandpass (rxa[channel].bp1.p, 0);
-	xcbl (rxa[channel].cbl.p, 0);
 	xwcpagc (rxa[channel].agc.p);
 	xanf (rxa[channel].anf.p, 1);
 	xanr (rxa[channel].anr.p, 1);
 	xemnr (rxa[channel].emnr.p, 1);
 	xnnr(rxa[channel].nnr.p, 1);
-	xrnnr (rxa[channel].rnnr.p, 1);		// Zeus NR3
-	xsbnr (rxa[channel].sbnr.p, 1);		// Zeus NR4
 	xbandpass (rxa[channel].bp1.p, 1);
 	xmeter (rxa[channel].agcmeter.p);
 	xsiphon (rxa[channel].sip1.p, 0);
-	xcbl (rxa[channel].cbl.p, 1);
+	xcbl (rxa[channel].cbl.p);
 	xdoublepole (rxa[channel].doublepole.p, 0);
 	xmatched (rxa[channel].matched.p, 0);
 	xgaussian (rxa[channel].gaussian.p, 0);
@@ -769,8 +742,6 @@ void setDSPSamplerate_rxa (int channel)
 	setSamplerate_anr (rxa[channel].anr.p, ch[channel].dsp_rate);
 	setSamplerate_emnr (rxa[channel].emnr.p, ch[channel].dsp_rate);
 	setSamplerate_nnr (rxa[channel].nnr.p, ch[channel].dsp_rate);
-	setSamplerate_rnnr (rxa[channel].rnnr.p, ch[channel].dsp_rate);	// Zeus NR3
-	setSamplerate_sbnr (rxa[channel].sbnr.p, ch[channel].dsp_rate);	// Zeus NR4
 	setSamplerate_bandpass (rxa[channel].bp1.p, ch[channel].dsp_rate);
 	setSamplerate_wcpagc (rxa[channel].agc.p, ch[channel].dsp_rate);
 	setSamplerate_meter (rxa[channel].agcmeter.p, ch[channel].dsp_rate);
@@ -839,10 +810,6 @@ void setDSPBuffsize_rxa (int channel)
 	setSize_emnr (rxa[channel].emnr.p, ch[channel].dsp_size);
 	setBuffers_nnr(rxa[channel].nnr.p, rxa[channel].midbuff, rxa[channel].midbuff);
 	setSize_nnr(rxa[channel].nnr.p, ch[channel].dsp_size);
-	setSize_rnnr (rxa[channel].rnnr.p, ch[channel].dsp_size);								// Zeus NR3
-	setBuffers_rnnr (rxa[channel].rnnr.p, rxa[channel].midbuff, rxa[channel].midbuff);
-	setSize_sbnr (rxa[channel].sbnr.p, ch[channel].dsp_size);								// Zeus NR4
-	setBuffers_sbnr (rxa[channel].sbnr.p, rxa[channel].midbuff, rxa[channel].midbuff);
 	setBuffers_bandpass (rxa[channel].bp1.p, rxa[channel].midbuff, rxa[channel].midbuff);
 	setSize_bandpass (rxa[channel].bp1.p, ch[channel].dsp_size);
 	setBuffers_wcpagc (rxa[channel].agc.p, rxa[channel].midbuff, rxa[channel].midbuff);
@@ -936,8 +903,8 @@ void RXAResCheck (int channel)
 	else												b->run = 0;
 }
 
-void RXAbp1CheckEx (int channel, int amd_run, int snba_run,
-	int emnr_run, int nnr_run, int anf_run, int anr_run, int rnnr_run, int sbnr_run)
+void RXAbp1Check (int channel, int amd_run, int snba_run, 
+	int emnr_run, int nnr_run, int anf_run, int anr_run)
 {
 	BANDPASS a = rxa[channel].bp1.p;
 	double gain;
@@ -946,21 +913,10 @@ void RXAbp1CheckEx (int channel, int amd_run, int snba_run,
 		emnr_run ||
 		nnr_run  ||
 		anf_run  ||
-		anr_run  ||
-		rnnr_run ||		// Zeus NR3
-		sbnr_run)		// Zeus NR4
-					gain = 2.0;
+		anr_run)	gain = 2.0;
 	else			gain = 1.0;
 	if (a->gain != gain)
 		setGain_bandpass (a, gain, 0);
-}
-
-void RXAbp1Check (int channel, int amd_run, int snba_run,
-	int emnr_run, int nnr_run, int anf_run, int anr_run)
-{
-	// Zeus: upstream signature preserved; NR3 / NR4 flags read from the channel.
-	RXAbp1CheckEx (channel, amd_run, snba_run, emnr_run, nnr_run, anf_run, anr_run,
-		rxa[channel].rnnr.p->run, rxa[channel].sbnr.p->run);
 }
 
 void RXAbp1Set (int channel)
@@ -970,8 +926,6 @@ void RXAbp1Set (int channel)
 	if ((rxa[channel].amd.p->run  == 1) ||
 		(rxa[channel].snba.p->run == 1) ||
 		(rxa[channel].emnr.p->run == 1) ||
-		(rxa[channel].rnnr.p->run == 1) ||	// Zeus NR3
-		(rxa[channel].sbnr.p->run == 1) ||	// Zeus NR4
 		(rxa[channel].anf.p->run  == 1) ||
 		(rxa[channel].anr.p->run  == 1))	a->run = 1;
 	else									a->run = 0;

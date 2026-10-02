@@ -222,15 +222,6 @@ WDSP_API void PSSaveCorr (int channel, char* filename);
 WDSP_API void SetPSAutomode (int channel, int automode);
 WDSP_API void SetPSControl (int channel, int reset, int mancal, int automode, int turnon);
 WDSP_API void SetPSFeedbackRate (int channel, int rate);
-/* Thetis/SQ4KOU runtime controls mapped to WDSP 2.10 PS3 internals. */
-WDSP_API void SetPSEMAAlpha (int channel, double alpha);
-WDSP_API void SetPSPinAlpha (int channel, double alpha);
-WDSP_API void SetPSPinMode (int channel, int pin);
-WDSP_API void SetPSEQEnable (int channel, int enable);
-WDSP_API void SetPSOutlierSigma (int channel, double sigma);
-WDSP_API void SetPSDCBEnable (int channel, int enable);
-WDSP_API void SetPSDCBCap (int channel, double cap);
-WDSP_API void ResetPSAdvancedParams (int channel);
 WDSP_API void SetPSHWPeak (int channel, double peak);
 WDSP_API void SetPSLoopDelay (int channel, double delay);
 WDSP_API void SetPSMancal (int channel, int mancal);
