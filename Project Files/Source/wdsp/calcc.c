@@ -2040,6 +2040,7 @@ void pscc (int channel, int size, double* tx, double* rx)
 				if (InterlockedBitTestAndReset(&a->ctrl.calcdone, 0))
 				{
 					memcpy (a->info, a->binfo, 8 * sizeof (int));
+					a->info[13] = a->binfo[13];
 					a->info[14] = _InterlockedAnd (&a->ctrl.running, 1);
 					a->ctrl.calcinprogress = 0;
 					if (a->ctrl.reset)
