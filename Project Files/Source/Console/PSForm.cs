@@ -868,16 +868,16 @@ namespace Thetis
 
         private void chkPSStbl_CheckedChanged(object sender, EventArgs e)
         {
-            // Yurij_eu2av: SetPSStabilize toggles CurveEMA smoothing in WDSP 2.00.
-            if (chkPSStbl.Checked)
-                puresignal.SetPSStabilize(_txachannel, 1);
-            else
-                puresignal.SetPSStabilize(_txachannel, 0);
+            // WDSP 2.10 PS3: alpha=1.0 means no temporal smoothing.
+            // When stabilization is enabled, use the operator-selected EMA alpha.
+            puresignal.SetPSEMAAlpha(_txachannel,
+                chkPSStbl.Checked ? (double)udPSEMAAlpha.Value : 1.0);
         }
 
         private void udPSEMAAlpha_ValueChanged(object sender, EventArgs e)
         {
-            puresignal.SetPSEMAAlpha(_txachannel, (double)udPSEMAAlpha.Value);
+            if (chkPSStbl.Checked)
+                puresignal.SetPSEMAAlpha(_txachannel, (double)udPSEMAAlpha.Value);
         }
 
         private void udPSPinAlpha_ValueChanged(object sender, EventArgs e)
@@ -902,25 +902,21 @@ namespace Thetis
             switch (comboPSTint.SelectedIndex)
             {
                 case 0:
-                    puresignal.SetPSIntsAndSpi(_txachannel, 16, 256);
                     _ints = 16;
                     _spi = 256;
                     btnPSSave.Enabled = btnPSRestore.Enabled = true;
                     break;
                 case 1:
-                    puresignal.SetPSIntsAndSpi(_txachannel, 8, 512);
                     _ints = 8;
                     _spi = 512;
                     btnPSSave.Enabled = btnPSRestore.Enabled = false;
                     break;
                 case 2:
-                    puresignal.SetPSIntsAndSpi(_txachannel, 4, 1024);
                     _ints = 4;
                     _spi = 1024;
                     btnPSSave.Enabled = btnPSRestore.Enabled = false;
                     break;
                 default:
-                    puresignal.SetPSIntsAndSpi(_txachannel, 16, 256);
                     _ints = 16;
                     _spi = 256;
                     btnPSSave.Enabled = btnPSRestore.Enabled = true;
@@ -970,15 +966,19 @@ namespace Thetis
 
         private void SetPSAdvancedDefaults()
         {
-            // WDSP 2.00 PureSignal 3.0 recommended defaults
+            // Official WDSP 2.10 PS3 defaults.
             chkPSStbl.Checked = true;
-            udPSEMAAlpha.Value = 1.00m;
+            udPSEMAAlpha.Value = 0.30m;
             udPSPinAlpha.Value = 0.10m;
             chkPSPin.Checked = true;
             chkPSEQ.Checked = true;
+
+            // PS3 uses a fixed bucket collector; legacy TINT/ints/spi is not applicable.
             comboPSTint.SelectedIndex = 0;
-            udPSOutlierSigma.Value = (decimal)console.SetupForm.PSOutlierSigma;
-            chkPSOutlierEnable.Checked = console.SetupForm.PSOutlierEnable;
+            comboPSTint.Enabled = false;
+
+            udPSOutlierSigma.Value = 2.50m;
+            chkPSOutlierEnable.Checked = true;
             udPSTargetFeedback.Value = console.SetupForm.PSTargetFeedbackLevel;
             chkPSDCB.Checked = false;
             udPSDCBCap.Value = 0.25m;
@@ -1148,9 +1148,6 @@ namespace Thetis
         public static extern void SetPSFeedbackRate(int channel, int rate);
 
         // Yurij_eu2av: PureSignal 3.0 (WDSP 2.00) advanced property functions
-        [DllImport("wdsp.dll", EntryPoint = "SetPSStabilize", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetPSStabilize(int channel, int stbl);
-
         [DllImport("wdsp.dll", EntryPoint = "SetPSEMAAlpha", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetPSEMAAlpha(int channel, double alpha);
 
@@ -1159,9 +1156,6 @@ namespace Thetis
 
         [DllImport("wdsp.dll", EntryPoint = "SetPSPinMode", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetPSPinMode(int channel, int pin);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetPSIntsAndSpi", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetPSIntsAndSpi(int channel, int ints, int spi);
 
         [DllImport("wdsp.dll", EntryPoint = "SetPSDCBEnable", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetPSDCBEnable(int channel, int enable);
