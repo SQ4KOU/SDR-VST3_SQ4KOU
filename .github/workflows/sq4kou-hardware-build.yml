@@ -30,6 +30,74 @@ jobs:
       - name: Build
         run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
 
+      - name: Verify WDSP 2.10 ABI
+        shell: pwsh
+        run: |
+          $dll = "Project Files/bin/x64/Release/wdsp.dll"
+          if (-not (Test-Path $dll)) { throw "wdsp.dll not found after build" }
+
+          if (-not (Select-String -Path "Project Files/Source/wdsp/version.c" -Pattern 'version = 210' -Quiet)) {
+            throw "WDSP source version is not 2.10"
+          }
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsRoot) { throw "Visual Studio VC tools installation not found" }
+
+          $dumpbin = Get-ChildItem -Path (Join-Path $vsRoot "VC\Tools\MSVC") -Recurse -Filter dumpbin.exe |
+            Where-Object { $_.FullName -match '\\bin\\Hostx64\\x64\\dumpbin\.exe
+        run: |
+          $wixTargets = "C:/Program Files (x86)/MSBuild/Microsoft/WiX/v3.x/Wix.targets"
+          msbuild "Project Files/Source/Thetis-Installer/Thetis-Installer.wixproj" -p:Configuration=Release -p:Platform=x64 "-p:WixTargetsPath=$wixTargets" -m -nologo
+
+      - name: Locate MSI
+        id: msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem "Project Files/bin/Installers/SDR-VST3-v*.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msi) { throw "MSI not found" }
+          "path=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDR-VST3-SQ4KOU-Hardware
+          path: ${{ steps.msi.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+ } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found" }
+
+          $exports = & $dumpbin.FullName /exports $dll
+          foreach ($name in @(
+            "GetWDSPVersion",
+            "SetRXANNRRun",
+            "SetRXANNRModel",
+            "SetNNRModelPath",
+            "GetPSDisp",
+            "SetRXARNNRRun",
+            "SetRXASBNRRun",
+            "SetRXACBLPosition",
+            "SetPSEMAAlpha",
+            "SetPSPinAlpha",
+            "SetPSPinMode",
+            "SetPSEQEnable",
+            "SetPSOutlierSigma",
+            "SetPSDCBEnable",
+            "SetPSDCBCap",
+            "ResetPSAdvancedParams"
+          )) {
+            if (-not ($exports | Select-String -SimpleMatch $name)) {
+              throw "Missing WDSP export: $name"
+            }
+          }
+
+          Write-Host "WDSP 2.10 ABI verification PASS"
+
       - name: Build MSI
         shell: pwsh
         run: |
