@@ -57,7 +57,43 @@ namespace Thetis
 
         private void PersistWaterfallPaletteSettings()
         {
-            SaveGPUWaterfallUIState();
+            if (initializing || _gpuWaterfallUiLoading) return;
+
+            try
+            {
+                string rx1 = comboColorPalette?.Text ?? "";
+                string rx2 = comboRX2ColorPalette?.Text ?? "";
+                string tx = comboColorPalette_tx?.Text ?? "";
+
+                // Ordinary Setup persistence is authoritative for palette choice.
+                // The palette combos now contain the 256-entry items before
+                // getOptions(), so these exact strings can be restored at startup.
+                Dictionary<string,string> options =
+                    DB.GetVarsDictionary("Options") ?? new Dictionary<string,string>();
+                options["comboColorPalette"] = rx1;
+                options["comboRX2ColorPalette"] = rx2;
+                options["comboColorPalette_tx"] = tx;
+                DB.SaveVarsDictionary("Options", ref options, true);
+
+                // Keep the earlier GPU-waterfall store synchronized so existing
+                // databases remain compatible with the previous implementation.
+                Dictionary<string,string> ui =
+                    DB.GetVarsDictionary("GPUWaterfallUI") ?? new Dictionary<string,string>();
+                ui["__RX1PaletteText"] = rx1;
+                ui["__RX2PaletteText"] = rx2;
+                ui["__TXPaletteText"] = tx;
+                DB.SaveVarsDictionary("GPUWaterfallUI", ref ui, true);
+
+                // Saves the enum values too and flushes all pending DB changes.
+                Display.PersistNativeGPUWaterfallSettings();
+
+                GPUWaterfallLogger.Log("PALETTE",
+                    "Persisted RX1=" + rx1 + " RX2=" + rx2 + " TX=" + tx);
+            }
+            catch (Exception ex)
+            {
+                GPUWaterfallLogger.Log("PALETTE-SAVE-FAIL", ex.Message);
+            }
         }
 
         private void SaveGPUWaterfallUIState()
@@ -90,18 +126,34 @@ namespace Thetis
             _gpuWaterfallUiLoading = true;
             try
             {
-                Dictionary<string,string> d = DB.GetVarsDictionary("GPUWaterfallUI") ?? new Dictionary<string,string>();
+                Dictionary<string,string> options =
+                    DB.GetVarsDictionary("Options") ?? new Dictionary<string,string>();
+                Dictionary<string,string> legacy =
+                    DB.GetVarsDictionary("GPUWaterfallUI") ?? new Dictionary<string,string>();
 
-                void RestoreCombo(ComboBox combo, string key)
+                void RestoreCombo(ComboBox combo, string optionKey, string legacyKey)
                 {
-                    if (combo == null || !d.TryGetValue(key, out string text) || string.IsNullOrEmpty(text)) return;
-                    int index = combo.FindStringExact(text);
-                    if (index >= 0) combo.SelectedIndex = index;
+                    if (combo == null) return;
+
+                    string text = null;
+                    if (!options.TryGetValue(optionKey, out text) || string.IsNullOrEmpty(text))
+                        legacy.TryGetValue(legacyKey, out text);
+                    if (string.IsNullOrEmpty(text)) return;
+
+                    for (int i = 0; i < combo.Items.Count; i++)
+                    {
+                        if (string.Equals(combo.Items[i]?.ToString(), text,
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            combo.SelectedIndex = i;
+                            return;
+                        }
+                    }
                 }
 
-                RestoreCombo(comboColorPalette, "__RX1PaletteText");
-                RestoreCombo(comboRX2ColorPalette, "__RX2PaletteText");
-                RestoreCombo(comboColorPalette_tx, "__TXPaletteText");
+                RestoreCombo(comboColorPalette, "comboColorPalette", "__RX1PaletteText");
+                RestoreCombo(comboRX2ColorPalette, "comboRX2ColorPalette", "__RX2PaletteText");
+                RestoreCombo(comboColorPalette_tx, "comboColorPalette_tx", "__TXPaletteText");
 
                 EventArgs e = EventArgs.Empty;
                 comboColorPalette_SelectedIndexChanged(this, e);
