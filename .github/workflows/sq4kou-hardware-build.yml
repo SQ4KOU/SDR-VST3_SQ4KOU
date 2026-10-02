@@ -47,27 +47,7 @@ jobs:
           if (-not $vsRoot) { throw "Visual Studio VC tools installation not found" }
 
           $dumpbin = Get-ChildItem -Path (Join-Path $vsRoot "VC\Tools\MSVC") -Recurse -Filter dumpbin.exe |
-            Where-Object { $_.FullName -match '\\bin\\Hostx64\\x64\\dumpbin\.exe
-        run: |
-          $wixTargets = "C:/Program Files (x86)/MSBuild/Microsoft/WiX/v3.x/Wix.targets"
-          msbuild "Project Files/Source/Thetis-Installer/Thetis-Installer.wixproj" -p:Configuration=Release -p:Platform=x64 "-p:WixTargetsPath=$wixTargets" -m -nologo
-
-      - name: Locate MSI
-        id: msi
-        shell: pwsh
-        run: |
-          $msi = Get-ChildItem "Project Files/bin/Installers/SDR-VST3-v*.msi" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $msi) { throw "MSI not found" }
-          "path=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Upload MSI
-        uses: actions/upload-artifact@v4
-        with:
-          name: SDR-VST3-SQ4KOU-Hardware
-          path: ${{ steps.msi.outputs.path }}
-          if-no-files-found: error
-          retention-days: 14
- } |
+            Where-Object { $_.FullName -like "*\bin\Hostx64\x64\dumpbin.exe" } |
             Sort-Object FullName -Descending |
             Select-Object -First 1
           if (-not $dumpbin) { throw "dumpbin.exe not found" }
