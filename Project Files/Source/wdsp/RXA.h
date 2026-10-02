@@ -24,8 +24,6 @@ warren@wpratt.com
 
 */
 
-// Yurij_eu2av: Thetis patch ported to WDSP 2.00
-
 #ifndef _rxa_h
 #define _rxa_h
 #include "comm.h"
@@ -149,6 +147,18 @@ struct _rxa
 	} emnr;
 	struct
 	{
+		NNR p;
+	} nnr;
+	struct
+	{
+		RNNR p;		// Zeus: NR3 (RNNoise), Thetis lineage — see ZEUS-PATCHES.md
+	} rnnr;
+	struct
+	{
+		SBNR p;		// Zeus: NR4 (libspecbleach), Thetis lineage — see ZEUS-PATCHES.md
+	} sbnr;
+	struct
+	{
 		WCPAGC p;
 	} agc;
 	struct
@@ -167,14 +177,6 @@ struct _rxa
 	{
 		GAUSSIAN p;
 	} gaussian;
-	struct
-	{
-		RNNR p; // NR3 + NR4 support (nr3)
-	} rnnr;
-	struct
-	{
-		SBNR p; // NR3 + NR4 support (nr4)
-	} sbnr;
 	struct
 	{
 		SPEAK p;
@@ -225,7 +227,15 @@ extern __declspec (dllexport) void SetRXAMode (int channel, int mode);
 
 extern void RXAResCheck (int channel);
 
-extern void RXAbp1Check (int channel, int amd_run, int snba_run, int emnr_run, int anf_run, int anr_run, int rnnr_run, int sbnr_run); // NR3 + NR4 support
+extern void RXAbp1Check (int channel, int amd_run, int snba_run,
+	int emnr_run, int nnr_run, int anf_run, int anr_run);
+
+// Zeus: the upstream signature above reads the NR3 / NR4 run flags from the
+// channel itself, so upstream callers are untouched. rnnr.c / sbnr.c call
+// this variant to pass their *pending* run value, exactly as the upstream
+// blocks do for their own flag.
+extern void RXAbp1CheckEx (int channel, int amd_run, int snba_run,
+	int emnr_run, int nnr_run, int anf_run, int anr_run, int rnnr_run, int sbnr_run);
 
 extern void RXAbp1Set (int channel);
 

@@ -147,7 +147,6 @@ popd</Command>
     <ClInclude Include="channel.h" />
     <ClInclude Include="comm.h" />
     <ClInclude Include="fcurve.h" />
-    <ClInclude Include="FDnoiseIQ.h" />
     <ClInclude Include="fftw3.h" />
     <ClInclude Include="fir.h" />
     <ClInclude Include="firmin.h" />
@@ -167,6 +166,11 @@ popd</Command>
     <ClInclude Include="meter.h" />
     <ClInclude Include="meterlog10.h" />
     <ClInclude Include="nbp.h" />
+    <ClInclude Include="nnet.h" />
+    <ClInclude Include="nnet_profile.h" />
+    <ClInclude Include="nnio.h" />
+    <ClInclude Include="nnr.h" />
+    <ClInclude Include="wdsp.h" />
     <ClInclude Include="nob.h" />
     <ClInclude Include="nobII.h" />
     <ClInclude Include="nurbs.h" />
@@ -224,7 +228,6 @@ popd</Command>
     <ClCompile Include="extrapolate.c" />
     <ClCompile Include="channel.c" />
     <ClCompile Include="fcurve.c" />
-    <ClCompile Include="FDnoiseIQ.c" />
     <ClCompile Include="firmin.c" />
     <ClCompile Include="fmd.c" />
     <ClCompile Include="gain.c" />
@@ -243,6 +246,11 @@ popd</Command>
     <ClCompile Include="main.c" />
     <ClCompile Include="meter.c" />
     <ClCompile Include="nbp.c" />
+    <ClCompile Include="nnet.c" />
+    <ClCompile Include="nnio.c" />
+    <ClCompile Include="nnr.c" />
+    <ClCompile Include="nnr_model_0.c" />
+    <ClCompile Include="nnr_model_1.c" />
     <ClCompile Include="nob.c" />
     <ClCompile Include="nobII.c" />
     <ClCompile Include="nurbs.c" />
