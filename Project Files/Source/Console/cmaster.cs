@@ -777,7 +777,10 @@ namespace Thetis
             SetPSRxIdx(0, 0);   // txid = 0, all current models use Stream0 for RX feedback
             SetPSTxIdx(0, 1);   // txid = 0, all current models use Stream1 for TX feedback
             puresignal.SetPSFeedbackRate(txch, ps_rate);
-            puresignal.SetPSHWPeak(txch, 0.2899);
+            // WDSP 2.10 PS3 normalization is hardware/protocol dependent.
+            // In Protocol 1 (including Red Pitaya) PSDefaultPeak is 0.4072.
+            // Do not overwrite the PS3 core with the legacy PS2 0.2899 value.
+            puresignal.SetPSHWPeak(txch, HardwareSpecific.PSDefaultPeak);
 
             // setup transmitter display
             WDSP.TXASetSipMode(txch, 1);            // 1=>call the appropriate 'analyzer'
