@@ -15291,9 +15291,19 @@ namespace Thetis
             }
             else if (NetworkIO.CurrentRadioProtocol == RadioProtocol.USB)
             {
-                // protocol 1 assigned ADCs for each DDC
-                // RXADCCtrl_P1 is a 14 bit int, 2 bits per DDC 66554433221100
-                adcControl = RXADCCtrl_P1;
+                // Protocol 1 assigned ADCs for each DDC.
+                // RXADCCtrl_P1 is a 14 bit int, 2 bits per DDC 66554433221100.
+                //
+                // SQ4KOU / Red Pitaya: during TX/MOX UpdateDDCs() deliberately
+                // forces the physical P1 ADC map to 0 (all active DDCs -> ADC0)
+                // to enforce TX -> IN2 OFF.  Software-side ADC consumers must
+                // use that same effective map, otherwise S-ATT, overload logic
+                // and meters can act on a different ADC than the FPGA streams.
+                bool rpP1TxAdcForced =
+                    _mox &&
+                    HardwareSpecific.Model == HPSDRModel.REDPITAYA;
+
+                adcControl = rpP1TxAdcForced ? 0 : RXADCCtrl_P1;
             }
             else return -1;
 
