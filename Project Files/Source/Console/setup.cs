@@ -381,6 +381,12 @@ namespace Thetis
 #endif
             initializing = true;
 
+            // SQ4KOU: make all native 256-entry palettes available before the
+            // normal Options restore. Previously these items were injected only
+            // when Setup was shown, so getOptions() rejected "Enhanced 256" from
+            // a DropDownList and startup fell back to the legacy "Enhanced".
+            UpdateWaterfallPaletteItems(false);
+
             // MW0LGE note: this will allways cause the change event to fire, as the combobox does not contain any default value
             // it is bypassed in the event by use of the initializing flag, and is then
             // forced through in ForceAllEvents. This is the default radio with a blank database.
@@ -433,9 +439,9 @@ namespace Thetis
             comboAudioBuffer2.Text = "1024";
             comboAudioBuffer3.Text = "1024";
             comboDisplayLabelAlign.Text = "Auto";
-            comboColorPalette.Text = "enhanced";
-            comboRX2ColorPalette.Text = "enhanced";
-            comboColorPalette_tx.Text = "enhanced";
+            comboColorPalette.Text = "Enhanced";
+            comboRX2ColorPalette.Text = "Enhanced";
+            comboColorPalette_tx.Text = "Enhanced";
             comboTXLabelAlign.Text = "Cntr";
             //MW0LGE_21g comboDisplayDriver.Text = "DirectX";
 
@@ -12644,35 +12650,35 @@ namespace Thetis
             {
                 console.RX1ColourScheme = ColorScheme.Console;
                 clrbtnWaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette.Text == "Thermal 256")
             {
                 console.RX1ColourScheme = ColorScheme.Thermal;
                 clrbtnWaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette.Text == "DeepBlue 256")
             {
                 console.RX1ColourScheme = ColorScheme.DeepBlue;
                 clrbtnWaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette.Text == "Enhanced 256")
             {
                 console.RX1ColourScheme = ColorScheme.Enhanced256;
                 clrbtnWaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette.Text == "BlackWhite 256")
             {
                 console.RX1ColourScheme = ColorScheme.Grayscale256;
                 clrbtnWaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
 
@@ -12718,6 +12724,8 @@ namespace Thetis
                 console.RX1ColourScheme = ColorScheme.Custom;
                 clrbtnWaterfallLow.Visible = false;
             }
+
+            PersistWaterfallPaletteSettings();
         }
         private void showHideWaterfallControls(int rx, bool show)
         {
@@ -12750,35 +12758,35 @@ namespace Thetis
             {
                 console.RX2ColourScheme = ColorScheme.Console;
                 clrbtnRX2WaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboRX2ColorPalette.Text == "Thermal 256")
             {
                 console.RX2ColourScheme = ColorScheme.Thermal;
                 clrbtnRX2WaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboRX2ColorPalette.Text == "DeepBlue 256")
             {
                 console.RX2ColourScheme = ColorScheme.DeepBlue;
                 clrbtnRX2WaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboRX2ColorPalette.Text == "Enhanced 256")
             {
                 console.RX2ColourScheme = ColorScheme.Enhanced256;
                 clrbtnRX2WaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboRX2ColorPalette.Text == "BlackWhite 256")
             {
                 console.RX2ColourScheme = ColorScheme.Grayscale256;
                 clrbtnRX2WaterfallLow.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
 
@@ -12824,6 +12832,8 @@ namespace Thetis
                 console.RX2ColourScheme = ColorScheme.Custom;
                 clrbtnRX2WaterfallLow.Visible = false;
             }
+
+            PersistWaterfallPaletteSettings();
         }
 
         private void setWaterFallCalculatedDelayText()
@@ -35900,35 +35910,35 @@ namespace Thetis
             {
                 console.TXColourScheme = ColorScheme.Console;
                 clrbtnWaterfallLow_tx.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette_tx.Text == "Thermal 256")
             {
                 console.TXColourScheme = ColorScheme.Thermal;
                 clrbtnWaterfallLow_tx.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette_tx.Text == "DeepBlue 256")
             {
                 console.TXColourScheme = ColorScheme.DeepBlue;
                 clrbtnWaterfallLow_tx.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette_tx.Text == "Enhanced 256")
             {
                 console.TXColourScheme = ColorScheme.Enhanced256;
                 clrbtnWaterfallLow_tx.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
             else if (comboColorPalette_tx.Text == "BlackWhite 256")
             {
                 console.TXColourScheme = ColorScheme.Grayscale256;
                 clrbtnWaterfallLow_tx.Visible = false;
-                Display.PersistNativeGPUWaterfallSettings();
+                PersistWaterfallPaletteSettings();
                 return;
             }
 
@@ -35972,6 +35982,8 @@ namespace Thetis
                 console.TXColourScheme = ColorScheme.Custom;
                 clrbtnWaterfallLow_tx.Visible = false;
             }
+
+            PersistWaterfallPaletteSettings();
         }
 
         private void clrbtnWaterfallLow_tx_Changed(object sender, EventArgs e)
