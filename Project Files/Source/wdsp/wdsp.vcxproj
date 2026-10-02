@@ -59,7 +59,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WIN32;_DEBUG;_WINDOWS;_USRDLL;WDSP_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
-      <AdditionalIncludeDirectories>.;../../lib/portaudio_VS2008/include;%(AdditionalIncludeDirectories);../../lib/NR_Algorithms_$(HPSDR_PLATFORM)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../lib/portaudio_VS2008/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <AdditionalOptions>/D_ATL_XP_TARGETING %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -70,7 +70,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>../../lib/fftw_$(HPSDR_PLATFORM)/libfftw3-3.lib;avrt.lib;%(AdditionalDependencies);;../../lib/NR_Algorithms_$(HPSDR_PLATFORM)/rnnoise.lib;../../lib/NR_Algorithms_$(HPSDR_PLATFORM)/specbleach.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../lib/fftw_$(HPSDR_PLATFORM)/libfftw3-3.lib;avrt.lib;%(AdditionalDependencies);/rnnoise.lib/specbleach.lib</AdditionalDependencies>
       <OutputFile>$(SolutionDir)..\bin\$(HPSDR_PLATFORM)\$(Configuration)\wdsp.dll</OutputFile>
       <AdditionalLibraryDirectories>../../lib/fftw_$(HPSDR_PLATFORM)</AdditionalLibraryDirectories>
     </Link>
@@ -84,7 +84,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WIN32;_MBCS;NDEBUG;_WINDOWS;_USRDLL;SPECHPSDR_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <AdditionalIncludeDirectories>.;../../lib/portaudio_VS2008/include;%(AdditionalIncludeDirectories);../../lib/NR_Algorithms_$(HPSDR_PLATFORM)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;../../lib/portaudio_VS2008/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
       <CompileAs>CompileAsC</CompileAs>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
@@ -101,7 +101,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <OutputFile>$(SolutionDir)..\bin\$(HPSDR_PLATFORM)\$(Configuration)\wdsp.dll</OutputFile>
-      <AdditionalDependencies>../../lib/fftw_$(HPSDR_PLATFORM)/libfftw3-3.lib;avrt.lib;%(AdditionalDependencies);../../lib/NR_Algorithms_$(HPSDR_PLATFORM)/rnnoise.lib;../../lib/NR_Algorithms_$(HPSDR_PLATFORM)/specbleach.lib</AdditionalDependencies>
+      <AdditionalDependencies>../../lib/fftw_$(HPSDR_PLATFORM)/libfftw3-3.lib;avrt.lib;%(AdditionalDependencies)/rnnoise.lib/specbleach.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>../../lib/fftw_$(HPSDR_PLATFORM)</AdditionalLibraryDirectories>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
@@ -183,9 +183,7 @@ popd</Command>
     <ClInclude Include="reshb.h" />
     <ClInclude Include="resource1.h" />
     <ClInclude Include="rmatch.h" />
-    <ClInclude Include="rnnr.h" />
     <ClInclude Include="RXA.h" />
-    <ClInclude Include="sbnr.h" />
     <ClInclude Include="sender.h" />
     <ClInclude Include="shift.h" />
     <ClInclude Include="siphon.h" />
@@ -262,9 +260,7 @@ popd</Command>
     <ClCompile Include="resample.c" />
     <ClCompile Include="reshb.c" />
     <ClCompile Include="rmatch.c" />
-    <ClCompile Include="rnnr.c" />
     <ClCompile Include="RXA.c" />
-    <ClCompile Include="sbnr.c" />
     <ClCompile Include="sender.c" />
     <ClCompile Include="shift.c" />
     <ClCompile Include="siphon.c" />
