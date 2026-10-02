@@ -446,7 +446,7 @@
             this.btnPSResetEngine.Size = new System.Drawing.Size(120, 20);
             this.btnPSResetEngine.TabIndex = 68;
             this.btnPSResetEngine.Text = "Reset PSA defaults";
-            this.toolTip1.SetToolTip(this.btnPSResetEngine, "Restore WDSP 2.00 recommended PureSignal default parameters.");
+            this.toolTip1.SetToolTip(this.btnPSResetEngine, "Restore WDSP 2.10 PureSignal 3.0 recommended default parameters.");
             this.btnPSResetEngine.UseVisualStyleBackColor = false;
             this.btnPSResetEngine.Click += new System.EventHandler(this.btnPSResetEngine_Click);
             // 
@@ -1137,7 +1137,7 @@
             this.ForeColor = System.Drawing.SystemColors.ControlText;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "PSForm";
-            this.Text = "PureSignal 2.0";
+            this.Text = "PureSignal 3.0";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.PSForm_Closing);
             this.Load += new System.EventHandler(this.PSForm_Load);
             ((System.ComponentModel.ISupportInitialize)(this.udPSMoxDelay)).EndInit();
