@@ -33,7 +33,7 @@ jobs:
       - name: Audit legacy PS2 calls
         shell: pwsh
         run: |
-          $legacy = 'SetPSPtol|SetPSPinMode|SetPSMapMode|SetPSStabilize|SetPSIntsAndSpi'
+          $legacy = 'SetPSPtol|SetPSMapMode|SetPSStabilize|SetPSIntsAndSpi|SetPSEMAAlpha|SetPSPinAlpha|SetPSPinMode|SetPSEQEnable|SetPSOutlierSigma|SetPSDCBEnable|SetPSDCBCap|ResetPSAdvancedParams'
           $legacyRefs = @()
           Get-ChildItem "Project Files/Source/Console" -Recurse -Filter *.cs | ForEach-Object {
             Select-String -Path $_.FullName -Pattern $legacy | ForEach-Object {
