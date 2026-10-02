@@ -34,11 +34,17 @@ jobs:
         shell: pwsh
         run: |
           $legacy = 'SetPSPtol|SetPSPinMode|SetPSMapMode|SetPSStabilize|SetPSIntsAndSpi'
+          $legacyRefs = @()
           Get-ChildItem "Project Files/Source/Console" -Recurse -Filter *.cs | ForEach-Object {
             Select-String -Path $_.FullName -Pattern $legacy | ForEach-Object {
-              Write-Host ("PS2REF {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim())
+              $legacyRefs += ("PS2REF {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim())
             }
           }
+          if ($legacyRefs.Count -gt 0) {
+            $legacyRefs | ForEach-Object { Write-Host $_ }
+            throw "Legacy PureSignal 2 calls remain in managed code"
+          }
+          Write-Host "Legacy PureSignal 2 call audit PASS"
 
       - name: Verify WDSP 2.10 ABI
         shell: pwsh
@@ -69,18 +75,10 @@ jobs:
             "SetRXANNRModel",
             "SetNNRModelPath",
             "GetPSDisp",
-            "SetRXARNNRRun",
-            "SetRXARNNRUseDefaultGain",
-            "SetRXASBNRRun",
-            "SetRXACBLPosition",
-            "SetPSEMAAlpha",
-            "SetPSPinAlpha",
-            "SetPSPinMode",
-            "SetPSEQEnable",
-            "SetPSOutlierSigma",
-            "SetPSDCBEnable",
-            "SetPSDCBCap",
-            "ResetPSAdvancedParams"
+            "GetPSInfo",
+            "SetPSControl",
+            "SetPSFeedbackRate",
+            "SetPSHWPeak"
           )) {
             if (-not ($exports | Select-String -SimpleMatch $name)) {
               throw "Missing WDSP export: $name"
