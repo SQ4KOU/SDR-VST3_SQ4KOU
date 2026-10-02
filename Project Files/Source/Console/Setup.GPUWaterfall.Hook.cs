@@ -19,8 +19,12 @@ namespace Thetis
                 Display.EnsureNativeGPUWaterfallSettingsLoaded();
                 InitGPUWaterfallSetupUI();
                 LoadGPUWaterfallUIState();
-                ApplyLoadedGPUWaterfallSettings();
+
+                // Restore palette text before ApplyLoadedGPUWaterfallSettings().
+                // Otherwise ApplyLoaded... fires the legacy palette handler first
+                // and can overwrite a saved 256-entry choice before it is restored.
                 RestoreGPUWaterfallPaletteSelections();
+                ApplyLoadedGPUWaterfallSettings();
                 WireGPUWaterfallPersistence(_tpWaterfall);
 
                 if (comboColorPalette != null) comboColorPalette.SelectedIndexChanged += GPUWaterfallControlChanged;
@@ -135,9 +139,22 @@ namespace Thetis
                 {
                     if (combo == null) return;
 
-                    string text = null;
-                    if (!options.TryGetValue(optionKey, out text) || string.IsNullOrEmpty(text))
-                        legacy.TryGetValue(legacyKey, out text);
+                    options.TryGetValue(optionKey, out string optionText);
+                    legacy.TryGetValue(legacyKey, out string legacyText);
+
+                    bool Is256(string value) =>
+                        !string.IsNullOrEmpty(value) &&
+                        value.EndsWith(" 256", StringComparison.OrdinalIgnoreCase);
+
+                    // Migration rule for databases written by the previous build:
+                    // if the normal Options restore fell back to legacy "Enhanced"
+                    // but GPUWaterfallUI still contains "Enhanced 256", preserve the
+                    // explicit 256-entry choice. Once restored it is written back to
+                    // Options by the normal palette handler.
+                    string text = Is256(optionText) ? optionText :
+                                  Is256(legacyText) ? legacyText :
+                                  !string.IsNullOrEmpty(optionText) ? optionText :
+                                  legacyText;
                     if (string.IsNullOrEmpty(text)) return;
 
                     for (int i = 0; i < combo.Items.Count; i++)
