@@ -198,7 +198,6 @@ namespace Thetis
 
             WDSP.destroy_impulse_cache();
 
-            WDSP.RNNRloadModel(""); // this will cause a clear up of a loaded model
 
             cmaster.StopTCIStreamThreads();
 
@@ -1691,7 +1690,6 @@ namespace Thetis
                 {
                     if (value != rx_cbl_position_dsp || force)
                     {
-                        WDSP.SetRXACBLPosition(WDSP.id(thread, subrx), value);
                         rx_cbl_position_dsp = value;
                     }
                 }
@@ -2285,7 +2283,6 @@ namespace Thetis
                 {
                     if (value != rx_nr3_run_dsp || force)
                     {
-                        WDSP.SetRXARNNRRun(WDSP.id(thread, subrx), value);
                         rx_nr3_run_dsp = value;
                     }
                 }
@@ -2303,7 +2300,6 @@ namespace Thetis
                 {
                     if (value != rx_nr3_position_dsp || force)
                     {
-                        WDSP.SetRXARNNRPosition(WDSP.id(thread, subrx), value);
                         rx_nr3_position_dsp = value;
                     }
                 }
@@ -2321,7 +2317,6 @@ namespace Thetis
                 {
                     if (value != rx_nr3_fixed_gain_dsp || force)
                     {
-                        WDSP.SetRXARNNRUseDefaultGain(WDSP.id(thread, subrx), value);
                         rx_nr3_fixed_gain_dsp = value;
                     }
                 }
@@ -2340,7 +2335,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_run_dsp || force)
                     {
-                        WDSP.SetRXASBNRRun(WDSP.id(thread, subrx), value);
                         rx_nr4_run_dsp = value;
                     }
                 }
@@ -2359,7 +2353,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_position_dsp || force)
                     {
-                        WDSP.SetRXASBNRPosition(WDSP.id(thread, subrx), value);
                         rx_nr4_position_dsp = value;
                     }
                 }
@@ -2378,7 +2371,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_reductionAmount_dsp || force)
                     {
-                        WDSP.SetRXASBNRreductionAmount(WDSP.id(thread, subrx), value);
                         rx_nr4_reductionAmount_dsp = value;
                     }
                 }
@@ -2397,7 +2389,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_smoothingFactor_dsp || force)
                     {
-                        WDSP.SetRXASBNRsmoothingFactor(WDSP.id(thread, subrx), value);
                         rx_nr4_smoothingFactor_dsp = value;
                     }
                 }
@@ -2416,7 +2407,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_whiteningFactor_dsp || force)
                     {
-                        WDSP.SetRXASBNRwhiteningFactor(WDSP.id(thread, subrx), value);
                         rx_nr4_whiteningFactor_dsp = value;
                     }
                 }
@@ -2435,7 +2425,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_noiseRescale_dsp || force)
                     {
-                        WDSP.SetRXASBNRnoiseRescale(WDSP.id(thread, subrx), value);
                         rx_nr4_noiseRescale_dsp = value;
                     }
                 }
@@ -2454,7 +2443,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_postFilterThreshold_dsp || force)
                     {
-                        WDSP.SetRXASBNRpostFilterThreshold(WDSP.id(thread, subrx), value);
                         rx_nr4_postFilterThreshold_dsp = value;
                     }
                 }
@@ -2473,7 +2461,6 @@ namespace Thetis
                 {
                     if (value != rx_nr4_noiseScalingType_dsp || force)
                     {
-                        WDSP.SetRXASBNRnoiseScalingType(WDSP.id(thread, subrx), value);
                         rx_nr4_noiseScalingType_dsp = value;
                     }
                 }
