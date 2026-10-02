@@ -23,6 +23,7 @@ The author can be reached by email at
 warren@pratt.one
 
 */
+// Yurij_eu2av: Q-factor parametric CFCOMP port
 
 #ifndef _cfcomp_h
 #define _cfcomp_h
@@ -77,6 +78,8 @@ typedef struct _cfcomp
 	double* Fe;
 	double* G;
 	double* E;
+	double* Qg;
+	double* Qe;
 	double* fpG;
 	double* fpE;
 	double* gp;

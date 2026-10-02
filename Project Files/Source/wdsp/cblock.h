@@ -24,10 +24,27 @@ warren@wpratt.com
 
 */
 
+// Yurij_eu2av: Thetis patch ported to WDSP 2.00
+
 #ifndef _cblock_h
 #define _cblock_h
 
-typedef struct _cbl* CBL;
+typedef struct _cbl
+{
+	int run;							//run
+	int buff_size;						//buffer size
+	double *in_buff;					//pointer to input buffer
+	double *out_buff;					//pointer to output buffer
+	int mode;
+	double sample_rate;					//sample rate
+	double prevIin;
+	double prevQin;
+	double prevIout;
+	double prevQout;
+	double tau;							//carrier removal time constant
+	double mtau;						//carrier removal multiplier
+	double position;					//0 before AGC, 1 after AGC
+} cbl, *CBL;
 
 extern CBL create_cbl
 	(
@@ -37,14 +54,15 @@ extern CBL create_cbl
 	double *out_buff,
 	int mode,
 	int sample_rate,
-	double tau
+	double tau,
+	int position
 	);
 
 extern void destroy_cbl (CBL a);
 
 extern void flush_cbl (CBL a);
 
-extern void xcbl (CBL a);
+extern void xcbl (CBL a, int position);
 
 extern void setBuffers_cbl (CBL a, double* in, double* out);
 
@@ -55,5 +73,6 @@ extern void setSize_cbl (CBL a, int size);
 // RXA Properties
 
 extern __declspec (dllexport) void SetRXACBLRun(int channel, int setit);
+extern __declspec (dllexport) void SetRXACBLPosition(int channel, int position);
 
 #endif

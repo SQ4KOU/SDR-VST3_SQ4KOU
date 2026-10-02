@@ -749,11 +749,6 @@ namespace Thetis
             LogTool.AddLogEntry("Initialising components...", "COMP");
 
             InitializeComponent();								// Windows Forms Generated Code
-            // NR3/NR4 depend on legacy RNNR/SBNR modules not present in official WDSP 2.10.
-            NR3ToolStripMenuItem.Enabled = false;
-            NR4ToolStripMenuItem.Enabled = false;
-            NR3ToolStripMenuItem_rx2.Enabled = false;
-            NR4ToolStripMenuItem_rx2.Enabled = false;
             Common.DoubleBufferAll(this, true);
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,

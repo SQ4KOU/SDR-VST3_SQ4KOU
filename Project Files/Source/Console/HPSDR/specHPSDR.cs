@@ -842,8 +842,22 @@ namespace Thetis
         [DllImport("WDSP.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void DestroyAnalyzer(int disp);
 
+        [DllImport("WDSP.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetPixelRef(int disp, double pixel_ref);
+
         [DllImport("WDSP.dll", EntryPoint = "GetPixels", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void GetPixels(int disp, int pixout, float* pix, ref int flag);
+        private static extern void GetPixelsNative(int disp, int pixout, float* pix, ref int flag, out double pixel_ref);
+
+        public static void GetPixels(int disp, int pixout, float* pix, ref int flag)
+        {
+            double pixel_ref;
+            GetPixelsNative(disp, pixout, pix, ref flag, out pixel_ref);
+        }
+
+        public static void GetPixels(int disp, int pixout, float* pix, ref int flag, out double pixel_ref)
+        {
+            GetPixelsNative(disp, pixout, pix, ref flag, out pixel_ref);
+        }
 
         [DllImport("WDSP.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern void Spectrum(int disp, int ss, int LO, float* pI, float* pQ);

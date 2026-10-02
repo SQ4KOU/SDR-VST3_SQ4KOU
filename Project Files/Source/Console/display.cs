@@ -1490,6 +1490,7 @@ namespace Thetis
 
                 if (old_centre_freq_rx1_rounded != new_centre_freq_rx1_rounded)
                 {
+                    SpecHPSDRDLL.SetPixelRef(cmaster.inid(0, 0), value);
                     _rx1_centrefreq_change_time = DateTime.UtcNow;
                     _stopRx1Waterfall = true;
                     m_dCentreFreqRX1 = value;
@@ -1510,6 +1511,7 @@ namespace Thetis
 
                 if (old_centre_freq_rx2_rounded != new_centre_freq_rx2_rounded)
                 {
+                    SpecHPSDRDLL.SetPixelRef(cmaster.inid(0, 1), value);
                     _rx2_centrefreq_change_time = DateTime.UtcNow;
                     _stopRx2Waterfall = true;
                     m_dCentreFreqRX2 = value;

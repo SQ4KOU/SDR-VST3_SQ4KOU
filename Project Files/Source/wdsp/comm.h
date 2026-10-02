@@ -78,6 +78,8 @@ warren@wpratt.com
 #include "meterlog10.h"
 #include "nbp.h"
 #include "nnr.h"
+#include "rnnr.h" // Thetis NR3 / RNNoise
+#include "sbnr.h" // Thetis NR4 / specbleach
 #include "nob.h"
 #include "nobII.h"
 #include "nurbs.h"

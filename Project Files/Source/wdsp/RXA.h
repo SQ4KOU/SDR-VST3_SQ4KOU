@@ -151,6 +151,14 @@ struct _rxa
 	} nnr;
 	struct
 	{
+		RNNR p;		// Zeus: NR3 (RNNoise), Thetis lineage — see ZEUS-PATCHES.md
+	} rnnr;
+	struct
+	{
+		SBNR p;		// Zeus: NR4 (libspecbleach), Thetis lineage — see ZEUS-PATCHES.md
+	} sbnr;
+	struct
+	{
 		WCPAGC p;
 	} agc;
 	struct
@@ -219,8 +227,15 @@ extern __declspec (dllexport) void SetRXAMode (int channel, int mode);
 
 extern void RXAResCheck (int channel);
 
-extern void RXAbp1Check (int channel, int amd_run, int snba_run, 
+extern void RXAbp1Check (int channel, int amd_run, int snba_run,
 	int emnr_run, int nnr_run, int anf_run, int anr_run);
+
+// Zeus: the upstream signature above reads the NR3 / NR4 run flags from the
+// channel itself, so upstream callers are untouched. rnnr.c / sbnr.c call
+// this variant to pass their *pending* run value, exactly as the upstream
+// blocks do for their own flag.
+extern void RXAbp1CheckEx (int channel, int amd_run, int snba_run,
+	int emnr_run, int nnr_run, int anf_run, int anr_run, int rnnr_run, int sbnr_run);
 
 extern void RXAbp1Set (int channel);
 
