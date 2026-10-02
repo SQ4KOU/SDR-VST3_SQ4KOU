@@ -1152,6 +1152,8 @@ static void calc (CALCC a)
 	a->binfo[2] = 0x0000;
 	a->binfo[3] = 0x0000;
 	a->binfo[6] = 0b0000;
+	/* diagnostic: exact PS3 fit quality flags for the stage that failed */
+	a->binfo[13] = 0;
 	a->binfo[7]++;
 
 	a->m_nurb = NULL;
@@ -1309,6 +1311,10 @@ static void calc (CALCC a)
 	if (a->m_nfres->quality & NF_FIT_BAD)
 	{
 		a->binfo[1] |= 0b0010;
+		/* Preserve the native nf_fit reason; bldr.cm=2 alone loses whether
+		   the rejection was condition-number, convergence, range, too-few,
+		   overfit or bounds.  info[13] is otherwise unused by calibration. */
+		a->binfo[13] = a->m_nfres->quality;
 		goto cleanup;
 	}
 	a->m_fold_prev = a->m_nfres->fold_detected ? 1 : 0;
