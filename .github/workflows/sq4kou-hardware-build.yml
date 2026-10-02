@@ -30,32 +30,6 @@ jobs:
       - name: Build
         run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
 
-      - name: Checkout known-good RedPitaya WDSP
-        uses: actions/checkout@v4
-        with:
-          repository: SQ4KOU/SQ4KOU-THETIS
-          ref: cae084286310bfd35ebc9ece8b8fbf2ec6094505
-          path: _known_good_redpitaya
-
-      - name: Pin known-good RedPitaya wdsp.dll
-        shell: pwsh
-        run: |
-          $src = "_known_good_redpitaya/Project Files/bin/x64/Release/wdsp.dll"
-          $dst = "Project Files/bin/x64/Release/wdsp.dll"
-          if (-not (Test-Path $src)) { throw "Known-good RedPitaya wdsp.dll not found" }
-          if (-not (Test-Path $dst)) { throw "Freshly built wdsp.dll not found" }
-
-          $builtHash = (Get-FileHash $dst -Algorithm SHA256).Hash
-          $knownHash = (Get-FileHash $src -Algorithm SHA256).Hash
-          Write-Host "Fresh build wdsp.dll SHA256: $builtHash"
-          Write-Host "Known-good RP wdsp.dll SHA256: $knownHash"
-
-          Copy-Item $src $dst -Force
-
-          $finalHash = (Get-FileHash $dst -Algorithm SHA256).Hash
-          if ($finalHash -ne $knownHash) { throw "wdsp.dll replacement verification failed" }
-          Write-Host "Packaged wdsp.dll SHA256: $finalHash"
-
       - name: Build MSI
         shell: pwsh
         run: |
