@@ -1,0 +1,271 @@
+name: WDSP 2.10 migration
+
+on:
+  push:
+    branches:
+      - feature/sq4kou-hardware
+    paths:
+      - .github/workflows/wdsp210-migrate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Fetch WDSP 2.10 and proven NR3/NR4 splice
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/TAPR/OpenHPSDR-wdsp.git "$env:RUNNER_TEMP\OpenHPSDR-wdsp"
+          git clone --depth 1 https://github.com/abhishekprakash22/zeus.git "$env:RUNNER_TEMP\zeus"
+
+      - name: Migrate native WDSP to 2.10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = $env:GITHUB_WORKSPACE
+          $wdsp = Join-Path $root "Project Files\Source\wdsp"
+          $backup = Join-Path $env:RUNNER_TEMP "wdsp-current"
+          $up200 = Join-Path $env:RUNNER_TEMP "OpenHPSDR-wdsp\wdsp 2.00\Source"
+          $up210 = Join-Path $env:RUNNER_TEMP "OpenHPSDR-wdsp\wdsp 2.10\Source"
+          $zeus = Join-Path $env:RUNNER_TEMP "zeus\native\wdsp"
+
+          New-Item -ItemType Directory -Force -Path $backup | Out-Null
+          Copy-Item "$wdsp\*" $backup -Recurse -Force
+
+          Get-ChildItem $up210 -File | Where-Object { $_.Extension -in ".c", ".h" } | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $wdsp $_.Name) -Force
+          }
+
+          $restore = @(
+            "analyzer.c", "analyzer.h",
+            "cblock.c", "cblock.h",
+            "cfcomp.c", "cfcomp.h",
+            "eq.c",
+            "fmsq.c",
+            "TXA.h"
+          )
+          foreach ($name in $restore) {
+            Copy-Item (Join-Path $backup $name) (Join-Path $wdsp $name) -Force
+          }
+
+          function Merge-3Way([string]$name) {
+            $local = Join-Path $backup $name
+            $base  = Join-Path $up200 $name
+            $new   = Join-Path $up210 $name
+            $out   = Join-Path $env:RUNNER_TEMP ("merged-" + $name)
+            cmd /c "git merge-file -p `"$local`" `"$base`" `"$new`" > `"$out`""
+            $code = $LASTEXITCODE
+            if ($code -ne 0) {
+              Write-Host "3-way merge conflict in $name"
+              Get-Content $out | Select-String -Pattern '<<<<<<<|=======|>>>>>>>' -Context 5,5
+              throw "3-way merge failed: $name"
+            }
+            Copy-Item $out (Join-Path $wdsp $name) -Force
+          }
+
+          Merge-3Way "TXA.c"
+          Merge-3Way "eq.h"
+
+          foreach ($name in @("RXA.c", "RXA.h", "rnnr.c", "rnnr.h", "sbnr.c", "sbnr.h")) {
+            Copy-Item (Join-Path $zeus $name) (Join-Path $wdsp $name) -Force
+          }
+
+          @'
+          from pathlib import Path
+          import re
+
+          root = Path.cwd()
+          wdsp = root / "Project Files" / "Source" / "wdsp"
+
+          p = wdsp / "RXA.c"
+          s = p.read_text(encoding="utf-8")
+          start = s.index("\t// carrier block")
+          end = s.index("\t// double-pole CW filter", start)
+          block = s[start:end]
+          lines = block.splitlines()
+          done = False
+          out = []
+          for line in lines:
+              if (not done) and "0.02);" in line:
+                  indent = line[:len(line)-len(line.lstrip())]
+                  out.append(indent + "0.02," + "\t" * 8 + "// tau")
+                  out.append(indent + "0);" + "\t" * 9 + "// position: 0 before AGC, 1 after AGC")
+                  done = True
+              else:
+                  out.append(line)
+          if not done:
+              raise SystemExit("CBL create patch anchor not found")
+          s = s[:start] + "\n".join(out) + "\n\n" + s[end:]
+
+          needle = "\txbandpass (rxa[channel].bp1.p, 0);\n\txwcpagc (rxa[channel].agc.p);"
+          repl = "\txbandpass (rxa[channel].bp1.p, 0);\n\txcbl (rxa[channel].cbl.p, 0);\n\txwcpagc (rxa[channel].agc.p);"
+          if needle not in s:
+              raise SystemExit("CBL pre-AGC execution anchor not found")
+          s = s.replace(needle, repl, 1)
+
+          needle = "\txsiphon (rxa[channel].sip1.p, 0);\n\txcbl (rxa[channel].cbl.p);"
+          repl = "\txsiphon (rxa[channel].sip1.p, 0);\n\txcbl (rxa[channel].cbl.p, 1);"
+          if needle not in s:
+              raise SystemExit("CBL post-AGC execution anchor not found")
+          s = s.replace(needle, repl, 1)
+          p.write_text(s, encoding="utf-8", newline="\n")
+
+          p = wdsp / "comm.h"
+          s = p.read_text(encoding="utf-8")
+          anchor = '#include "nnr.h"\n'
+          add = '#include "nnr.h"\n#include "rnnr.h" // Thetis NR3 / RNNoise\n#include "sbnr.h" // Thetis NR4 / specbleach\n'
+          if "rnnr.h" not in s:
+              if anchor not in s:
+                  raise SystemExit("comm.h NNR include anchor not found")
+              s = s.replace(anchor, add, 1)
+          p.write_text(s, encoding="utf-8", newline="\n")
+
+          p = wdsp / "wdsp.vcxproj"
+          s = p.read_text(encoding="utf-8-sig")
+          s = re.sub(r'^\s*<ClInclude Include="FDnoiseIQ\.h" />\s*\n', '', s, flags=re.M)
+          s = re.sub(r'^\s*<ClCompile Include="FDnoiseIQ\.c" />\s*\n', '', s, flags=re.M)
+
+          inc_anchor = '    <ClInclude Include="nbp.h" />\n'
+          inc_add = (
+              inc_anchor +
+              '    <ClInclude Include="nnet.h" />\n'
+              '    <ClInclude Include="nnet_profile.h" />\n'
+              '    <ClInclude Include="nnio.h" />\n'
+              '    <ClInclude Include="nnr.h" />\n'
+              '    <ClInclude Include="wdsp.h" />\n'
+          )
+          if 'ClInclude Include="nnr.h"' not in s:
+              if inc_anchor not in s:
+                  raise SystemExit("vcxproj include anchor not found")
+              s = s.replace(inc_anchor, inc_add, 1)
+
+          src_anchor = '    <ClCompile Include="nbp.c" />\n'
+          src_add = (
+              src_anchor +
+              '    <ClCompile Include="nnet.c" />\n'
+              '    <ClCompile Include="nnio.c" />\n'
+              '    <ClCompile Include="nnr.c" />\n'
+              '    <ClCompile Include="nnr_model_0.c" />\n'
+              '    <ClCompile Include="nnr_model_1.c" />\n'
+          )
+          if 'ClCompile Include="nnr.c"' not in s:
+              if src_anchor not in s:
+                  raise SystemExit("vcxproj source anchor not found")
+              s = s.replace(src_anchor, src_add, 1)
+          p.write_text(s, encoding="utf-8-sig", newline="\n")
+
+          p = wdsp / "wdsp.vcxproj.filters"
+          s = p.read_text(encoding="utf-8-sig")
+          s = re.sub(r'\s*<ClInclude Include="FDnoiseIQ\.h">\s*<Filter>Header Files</Filter>\s*</ClInclude>', '', s)
+          s = re.sub(r'\s*<ClCompile Include="FDnoiseIQ\.c">\s*<Filter>Source Files</Filter>\s*</ClCompile>', '', s)
+
+          inc_anchor = '    <ClInclude Include="nbp.h">\n      <Filter>Header Files</Filter>\n    </ClInclude>\n'
+          inc_add = inc_anchor + ''.join(
+              f'    <ClInclude Include="{name}">\n      <Filter>Header Files</Filter>\n    </ClInclude>\n'
+              for name in ["nnet.h", "nnet_profile.h", "nnio.h", "nnr.h", "wdsp.h"]
+          )
+          if 'ClInclude Include="nnr.h"' not in s:
+              if inc_anchor not in s:
+                  raise SystemExit("filters include anchor not found")
+              s = s.replace(inc_anchor, inc_add, 1)
+
+          src_anchor = '    <ClCompile Include="nbp.c">\n      <Filter>Source Files</Filter>\n    </ClCompile>\n'
+          src_add = src_anchor + ''.join(
+              f'    <ClCompile Include="{name}">\n      <Filter>Source Files</Filter>\n    </ClCompile>\n'
+              for name in ["nnet.c", "nnio.c", "nnr.c", "nnr_model_0.c", "nnr_model_1.c"]
+          )
+          if 'ClCompile Include="nnr.c"' not in s:
+              if src_anchor not in s:
+                  raise SystemExit("filters source anchor not found")
+              s = s.replace(src_anchor, src_add, 1)
+          p.write_text(s, encoding="utf-8-sig", newline="\n")
+
+          versions = root / "Project Files" / "Source" / "Console" / "Versions.cs"
+          s = versions.read_text(encoding="utf-8-sig")
+          s, n = re.subn(r'_WDSP_VERSION\s*=\s*2000', '_WDSP_VERSION = 2100', s, count=1)
+          if n != 1:
+              raise SystemExit("Versions.cs WDSP 2000 marker not found")
+          versions.write_text(s, encoding="utf-8-sig", newline="\n")
+
+          wf = root / ".github" / "workflows" / "sq4kou-hardware-build.yml"
+          s = wf.read_text(encoding="utf-8")
+          pattern = r'\n      - name: Checkout known-good RedPitaya WDSP.*?(?=\n      - name: Build MSI)'
+          s, n = re.subn(pattern, '\n', s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit("Known-good WDSP pin block not found in hardware workflow")
+          wf.write_text(s, encoding="utf-8", newline="\n")
+
+          manifest = root / "Documentation" / "WDSP_2_10_MIGRATION.md"
+          manifest.write_text(
+              "# WDSP 2.10 migration\n\n"
+              "Baseline: TAPR/OpenHPSDR-wdsp commit `b02d5bac675dd2f33ec2bab2b339f79a597c47dd` (Release Version 2.10).\n\n"
+              "Preserved Thetis/SDR-VST3 patches: analyzer pixel_ref, CBL position, NR3/RNNoise, "
+              "NR4/specbleach, Q-factor EQ/CFCOMP. PureSignal core is the upstream WDSP 2.10 PS3 implementation.\n\n"
+              "The hardware-test workflow no longer replaces the freshly built wdsp.dll with the old RedPitaya DLL.\n",
+              encoding="utf-8"
+          )
+          '@ | python -
+
+          if (Select-String -Path "$wdsp\*.c","$wdsp\*.h" -Pattern '<<<<<<<|=======|>>>>>>>' -Quiet) {
+            throw "Conflict markers remain in WDSP sources"
+          }
+          if (-not (Select-String -Path "$wdsp\version.c" -Pattern 'version = 210' -Quiet)) {
+            throw "WDSP native version is not 210"
+          }
+          foreach ($required in @("nnet.c","nnio.c","nnr.c","nnr_model_0.c","nnr_model_1.c","wdsp.h")) {
+            if (-not (Test-Path (Join-Path $wdsp $required))) { throw "Missing WDSP 2.10 file: $required" }
+          }
+
+      - name: Restore solution
+        run: msbuild "Project Files/Source/Thetis_VS2026.sln" -t:Restore -p:Configuration=Release -p:Platform=x64 -m -nologo
+
+      - name: Build full solution with WDSP 2.10
+        run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
+
+      - name: Verify built WDSP exports
+        shell: pwsh
+        run: |
+          $dll = "Project Files/bin/x64/Release/wdsp.dll"
+          if (-not (Test-Path $dll)) { throw "wdsp.dll not found after build" }
+          $exports = & dumpbin /exports $dll
+          foreach ($name in @(
+            "GetWDSPVersion",
+            "SetRXANNRRun",
+            "SetRXANNRModel",
+            "SetNNRModelPath",
+            "GetPSDisp",
+            "SetRXARNNRRun",
+            "SetRXASBNRRun",
+            "SetRXACBLPosition"
+          )) {
+            if (-not ($exports | Select-String -SimpleMatch $name)) { throw "Missing export: $name" }
+          }
+
+      - name: Commit migration
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Project Files/Source/wdsp" "Project Files/Source/Console/Versions.cs" ".github/workflows/sq4kou-hardware-build.yml" "Documentation/WDSP_2_10_MIGRATION.md"
+          if (git diff --cached --quiet) {
+            Write-Host "No migration changes to commit."
+            exit 0
+          }
+          git commit -m "Migrate WDSP core to 2.10"
+          git push origin HEAD:feature/sq4kou-hardware
