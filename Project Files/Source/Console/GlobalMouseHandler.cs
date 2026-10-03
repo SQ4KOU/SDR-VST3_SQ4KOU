@@ -706,9 +706,12 @@ namespace Thetis
                 return false;
 
             bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
-            bool leftDown = (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left;
 
-            if (!shiftDown || !leftDown)
+            // Mouse capture established at Begin guarantees that the matching
+            // button-up reaches us even if the pointer leaves the form. Do not
+            // poll Control.MouseButtons here: on non-client drags Windows can
+            // transiently report it as released and cancel an otherwise valid resize.
+            if (!shiftDown)
             {
                 EndNativeConsoleShiftResize();
                 return true;
