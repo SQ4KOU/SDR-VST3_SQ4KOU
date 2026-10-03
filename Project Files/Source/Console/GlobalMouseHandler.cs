@@ -112,9 +112,11 @@ namespace Thetis
             Bottom = 8
         }
 
-        private NativeConsoleResizeEdges _nativeConsoleResizeEdges;
-        private Point _nativeConsoleResizeMouseStart;
-        private Rectangle _nativeConsoleResizeBoundsStart;
+        private NativeConsoleResizeEdges _nativeDisplayResizeEdges;
+        private Point _nativeDisplayResizeMouseStart;
+        private Rectangle _nativeDisplayResizeBoundsStart;
+        private Size? _nativeLockedDisplayPanelSize;
+        private bool _nativeApplyingDisplayPanelSize;
         private Point? _nativeModeSpecificSharedLocation;
         private bool _nativeApplyingModeSpecificLocation;
         private bool _nativeModeSpecificRestorePending;
@@ -199,6 +201,43 @@ namespace Thetis
             Application.AddMessageFilter(_nativePanelShiftDragFilter);
             InitializeNativeModeSpecificLocationGuard();
             InitializeNativeWeldedLocationGuard();
+            InitializeNativeDisplaySizeGuard();
+        }
+
+        private void InitializeNativeDisplaySizeGuard()
+        {
+            Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+            if (displayPanel == null) return;
+
+            displayPanel.SizeChanged -= NativeDisplayPanel_SizeChanged;
+            displayPanel.SizeChanged += NativeDisplayPanel_SizeChanged;
+        }
+
+        private void NativeDisplayPanel_SizeChanged(object sender, EventArgs e)
+        {
+            if (_nativeApplyingDisplayPanelSize ||
+                _nativeDisplayResizeEdges != NativeConsoleResizeEdges.None ||
+                !_nativeLockedDisplayPanelSize.HasValue ||
+                IsDisposed || Disposing)
+                return;
+
+            Control displayPanel = sender as Control;
+            if (displayPanel == null || displayPanel.Name != "panelDisplay")
+                return;
+
+            Size locked = _nativeLockedDisplayPanelSize.Value;
+            if (displayPanel.Size == locked)
+                return;
+
+            _nativeApplyingDisplayPanelSize = true;
+            try
+            {
+                displayPanel.Size = locked;
+            }
+            finally
+            {
+                _nativeApplyingDisplayPanelSize = false;
+            }
         }
 
         private void InitializeNativeWeldedLocationGuard()
@@ -390,6 +429,7 @@ namespace Thetis
         }
 
         private const string NativePanelLocationKeyPrefix = "NativePanelLocation.";
+        private const string NativePanelSizeKeyPrefix = "NativePanelSize.";
 
         private static bool PersistNativePanelLocation(string name)
         {
@@ -423,6 +463,14 @@ namespace Thetis
 
                 state.Add(NativePanelLocationKeyPrefix + name + "/" +
                     location.X.ToString() + "|" + location.Y.ToString());
+            }
+
+            Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+            if (displayPanel != null)
+            {
+                Size size = _nativeLockedDisplayPanelSize ?? displayPanel.Size;
+                state.Add(NativePanelSizeKeyPrefix + "panelDisplay/" +
+                    size.Width.ToString() + "|" + size.Height.ToString());
             }
         }
 
@@ -492,6 +540,7 @@ namespace Thetis
         private void RestoreNativePanelLocationsFromState()
         {
             Dictionary<string, Point> saved = new Dictionary<string, Point>(StringComparer.Ordinal);
+            Size? savedDisplaySize = null;
 
             foreach (string entry in DB.GetVars("State"))
             {
@@ -499,20 +548,29 @@ namespace Thetis
                 if (slash <= 0 || slash >= entry.Length - 1) continue;
 
                 string key = entry.Substring(0, slash);
-                if (!key.StartsWith(NativePanelLocationKeyPrefix, StringComparison.Ordinal))
-                    continue;
-
-                string name = key.Substring(NativePanelLocationKeyPrefix.Length);
-                if (!PersistNativePanelLocation(name))
-                    continue;
-
                 string[] xy = entry.Substring(slash + 1).Split('|');
                 if (xy.Length != 2) continue;
 
-                if (Int32.TryParse(xy[0], out int x) &&
-                    Int32.TryParse(xy[1], out int y))
+                if (key.StartsWith(NativePanelLocationKeyPrefix, StringComparison.Ordinal))
                 {
-                    saved[name] = new Point(x, y);
+                    string name = key.Substring(NativePanelLocationKeyPrefix.Length);
+                    if (!PersistNativePanelLocation(name))
+                        continue;
+
+                    if (Int32.TryParse(xy[0], out int x) &&
+                        Int32.TryParse(xy[1], out int y))
+                    {
+                        saved[name] = new Point(x, y);
+                    }
+                }
+                else if (key == NativePanelSizeKeyPrefix + "panelDisplay")
+                {
+                    if (Int32.TryParse(xy[0], out int width) &&
+                        Int32.TryParse(xy[1], out int height) &&
+                        width > 0 && height > 0)
+                    {
+                        savedDisplaySize = new Size(width, height);
+                    }
                 }
             }
 
@@ -522,9 +580,25 @@ namespace Thetis
 
                 if (panel == null) continue;
 
-                // Saved State is an operator position. Restore it exactly and weld it.
-                // No automatic clamping/re-layout may silently alter the X/Y later.
                 SetNativePanelLocationAuthorized(panel, kvp.Value, true);
+            }
+
+            if (savedDisplaySize.HasValue)
+            {
+                Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+                if (displayPanel != null)
+                {
+                    _nativeLockedDisplayPanelSize = savedDisplaySize.Value;
+                    _nativeApplyingDisplayPanelSize = true;
+                    try
+                    {
+                        displayPanel.Size = savedDisplaySize.Value;
+                    }
+                    finally
+                    {
+                        _nativeApplyingDisplayPanelSize = false;
+                    }
+                }
             }
 
             Point shared;
@@ -546,7 +620,6 @@ namespace Thetis
                 }
             }
         }
-
 
         private static bool IsNativeMovableControl(Control control)
         {
@@ -634,7 +707,8 @@ namespace Thetis
             }
         }
 
-        private static NativeConsoleResizeEdges GetNativeResizeEdgesForRectangle(Rectangle r, Point screenMouse, int edge)
+        private static NativeConsoleResizeEdges GetNativeResizeEdgesForRectangle(
+            Rectangle r, Point screenMouse, int edge)
         {
             bool withinY = screenMouse.Y >= r.Top - edge && screenMouse.Y <= r.Bottom + edge;
             bool withinX = screenMouse.X >= r.Left - edge && screenMouse.X <= r.Right + edge;
@@ -653,24 +727,14 @@ namespace Thetis
             return edges;
         }
 
-        private NativeConsoleResizeEdges GetNativeConsoleResizeEdges(Point screenMouse)
+        private NativeConsoleResizeEdges GetNativeDisplayResizeEdges(Point screenMouse)
         {
-            if (WindowState != FormWindowState.Normal)
+            if (pnlDisplay == null || pnlDisplay.IsDisposed || !pnlDisplay.Visible)
                 return NativeConsoleResizeEdges.None;
 
             int edge = Math.Max(10, (int)Math.Round(12.0 * DeviceDpi / 96.0));
-
-            if (pnlDisplay != null && !pnlDisplay.IsDisposed && pnlDisplay.Visible)
-            {
-                Rectangle displayRect = pnlDisplay.RectangleToScreen(pnlDisplay.ClientRectangle);
-                NativeConsoleResizeEdges displayEdges =
-                    GetNativeResizeEdgesForRectangle(displayRect, screenMouse, edge);
-
-                if (displayEdges != NativeConsoleResizeEdges.None)
-                    return displayEdges;
-            }
-
-            return GetNativeResizeEdgesForRectangle(Bounds, screenMouse, edge);
+            Rectangle displayRect = pnlDisplay.RectangleToScreen(pnlDisplay.ClientRectangle);
+            return GetNativeResizeEdgesForRectangle(displayRect, screenMouse, edge);
         }
 
         private static Cursor GetNativeConsoleResizeCursor(NativeConsoleResizeEdges edges)
@@ -692,129 +756,122 @@ namespace Thetis
             return Cursors.Default;
         }
 
-        private bool BeginNativeConsoleShiftResize()
+        private bool BeginNativeDisplayShiftResize()
         {
             bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
-            if (!shiftDown || WindowState != FormWindowState.Normal)
+            if (!shiftDown)
                 return false;
 
-            NativeConsoleResizeEdges edges = GetNativeConsoleResizeEdges(Control.MousePosition);
+            NativeConsoleResizeEdges edges = GetNativeDisplayResizeEdges(Control.MousePosition);
             if (edges == NativeConsoleResizeEdges.None)
                 return false;
 
-            // Edge resize has priority over panel movement when the pointer is in
-            // the resize zone. This is a manual resize and does not depend on the
-            // current FormBorderStyle or native Windows non-client hit testing.
-            _nativeConsoleResizeEdges = edges;
-            _nativeConsoleResizeMouseStart = Control.MousePosition;
-            _nativeConsoleResizeBoundsStart = Bounds;
+            Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+            if (displayPanel == null)
+                return false;
+
+            _nativeDisplayResizeEdges = edges;
+            _nativeDisplayResizeMouseStart = Control.MousePosition;
+            _nativeDisplayResizeBoundsStart = displayPanel.Bounds;
 
             Capture = true;
             Cursor.Current = GetNativeConsoleResizeCursor(edges);
             return true;
         }
 
-        private bool ContinueNativeConsoleShiftResize()
+        private bool ContinueNativeDisplayShiftResize()
         {
-            if (_nativeConsoleResizeEdges == NativeConsoleResizeEdges.None)
+            if (_nativeDisplayResizeEdges == NativeConsoleResizeEdges.None)
                 return false;
 
             bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
-
-            // Mouse capture established at Begin guarantees that the matching
-            // button-up reaches us even if the pointer leaves the form. Do not
-            // poll Control.MouseButtons here: on non-client drags Windows can
-            // transiently report it as released and cancel an otherwise valid resize.
             if (!shiftDown)
             {
-                EndNativeConsoleShiftResize();
+                EndNativeDisplayShiftResize();
+                return true;
+            }
+
+            Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+            if (displayPanel == null)
+            {
+                EndNativeDisplayShiftResize();
                 return true;
             }
 
             Point mouse = Control.MousePosition;
-            int dx = mouse.X - _nativeConsoleResizeMouseStart.X;
-            int dy = mouse.Y - _nativeConsoleResizeMouseStart.Y;
+            int dx = mouse.X - _nativeDisplayResizeMouseStart.X;
+            int dy = mouse.Y - _nativeDisplayResizeMouseStart.Y;
 
-            Rectangle start = _nativeConsoleResizeBoundsStart;
+            Rectangle start = _nativeDisplayResizeBoundsStart;
             int left = start.Left;
             int top = start.Top;
             int right = start.Right;
             int bottom = start.Bottom;
 
-            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
+            if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Left) != 0)
                 left += dx;
-            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Right) != 0)
+            if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Right) != 0)
                 right += dx;
-            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
+            if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Top) != 0)
                 top += dy;
-            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Bottom) != 0)
+            if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Bottom) != 0)
                 bottom += dy;
 
-            int minWidth = Math.Max(1, MinimumSize.Width);
-            int minHeight = Math.Max(1, MinimumSize.Height);
+            int controlsHeight = Math.Max(0, displayPanel.Height - pnlDisplay.Height);
+            int minWidth = 320;
+            int minHeight = controlsHeight + 120;
 
-            if (!collapsedDisplay)
+            if (right - left < minWidth)
             {
-                minWidth = Math.Max(minWidth, console_basis_size.Width);
-                minHeight = Math.Max(minHeight, console_basis_size.Height);
-            }
-
-            int width = right - left;
-            if (width < minWidth)
-            {
-                if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
+                if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Left) != 0)
                     left = right - minWidth;
                 else
                     right = left + minWidth;
             }
 
-            int height = bottom - top;
-            if (height < minHeight)
+            if (bottom - top < minHeight)
             {
-                if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
+                if ((_nativeDisplayResizeEdges & NativeConsoleResizeEdges.Top) != 0)
                     top = bottom - minHeight;
                 else
                     bottom = top + minHeight;
             }
 
-            if (MaximumSize.Width > 0)
-            {
-                int maxWidth = MaximumSize.Width;
-                if (right - left > maxWidth)
-                {
-                    if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
-                        left = right - maxWidth;
-                    else
-                        right = left + maxWidth;
-                }
-            }
-
-            if (MaximumSize.Height > 0)
-            {
-                int maxHeight = MaximumSize.Height;
-                if (bottom - top > maxHeight)
-                {
-                    if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
-                        top = bottom - maxHeight;
-                    else
-                        bottom = top + maxHeight;
-                }
-            }
-
             Rectangle next = Rectangle.FromLTRB(left, top, right, bottom);
-            if (Bounds != next)
-                Bounds = next;
 
-            Cursor.Current = GetNativeConsoleResizeCursor(_nativeConsoleResizeEdges);
+            _nativeAuthorizedLocationWrites.Add(displayPanel);
+            _nativeApplyingDisplayPanelSize = true;
+            try
+            {
+                if (displayPanel.Bounds != next)
+                    displayPanel.Bounds = next;
+            }
+            finally
+            {
+                _nativeApplyingDisplayPanelSize = false;
+                _nativeAuthorizedLocationWrites.Remove(displayPanel);
+            }
+
+            _nativeLockedPanelLocations["panelDisplay"] = displayPanel.Location;
+            _nativeLockedDisplayPanelSize = displayPanel.Size;
+
+            Cursor.Current = GetNativeConsoleResizeCursor(_nativeDisplayResizeEdges);
             return true;
         }
 
-        private bool EndNativeConsoleShiftResize()
+        private bool EndNativeDisplayShiftResize()
         {
-            if (_nativeConsoleResizeEdges == NativeConsoleResizeEdges.None)
+            if (_nativeDisplayResizeEdges == NativeConsoleResizeEdges.None)
                 return false;
 
-            _nativeConsoleResizeEdges = NativeConsoleResizeEdges.None;
+            Control displayPanel = Controls.Find("panelDisplay", true).FirstOrDefault();
+            if (displayPanel != null)
+            {
+                _nativeLockedPanelLocations["panelDisplay"] = displayPanel.Location;
+                _nativeLockedDisplayPanelSize = displayPanel.Size;
+            }
+
+            _nativeDisplayResizeEdges = NativeConsoleResizeEdges.None;
             Capture = false;
             Cursor.Current = Cursors.Default;
             return true;
@@ -941,21 +998,21 @@ namespace Thetis
                         // Shift+LMB on the outer Console edge/corner resizes the
                         // main window. Everywhere else the same gesture keeps its
                         // existing meaning: move a native panel.
-                        if (_owner.BeginNativeConsoleShiftResize())
+                        if (_owner.BeginNativeDisplayShiftResize())
                             return true;
 
                         return _owner.BeginNativePanelShiftDrag(m.HWnd);
 
                     case WM_NCMOUSEMOVE:
                     case WM_MOUSEMOVE:
-                        if (_owner.ContinueNativeConsoleShiftResize())
+                        if (_owner.ContinueNativeDisplayShiftResize())
                             return true;
 
                         return _owner.ContinueNativePanelShiftDrag();
 
                     case WM_NCLBUTTONUP:
                     case WM_LBUTTONUP:
-                        if (_owner.EndNativeConsoleShiftResize())
+                        if (_owner.EndNativeDisplayShiftResize())
                             return true;
 
                         return _owner.EndNativePanelShiftDrag();
