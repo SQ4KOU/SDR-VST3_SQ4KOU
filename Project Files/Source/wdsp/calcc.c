@@ -370,7 +370,7 @@ static void configure_collection(PSCOLLECTION collect, int nbucks, int spi)
 	collect->nsamps = nbucks * spi;
 	collect->nfull = 0;
 
-	for (int i = 0; i < Collect->nbucks; i++)
+	for (int i = 0; i < SAMPLE_NBUCKS; i++)
 	{
 		collect->tpb[i] = 0;
 		collect->bbtm[i] = 1.0;
