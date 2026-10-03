@@ -8549,6 +8549,7 @@ namespace Thetis
                     else if (dBm >= highThreshold) pct = 1f;
                     else pct = (dBm - lowThreshold) / (highThreshold - lowThreshold);
 
+                    pct = WaterfallEnhancer.ApplyPaletteShape(pct);
                     palette.Sample(pct, out float pr, out float pg, out float pb);
                     R = Math.Max(0, Math.Min(255, (int)(pr + 0.5f)));
                     G = Math.Max(0, Math.Min(255, (int)(pg + 0.5f)));
@@ -9035,7 +9036,8 @@ namespace Thetis
                                         else if (waterfall_data[i] >= high_threshold) pct = 1f;
                                         else pct = (waterfall_data[i] - low_threshold) / (high_threshold - low_threshold);
 
-                                        palette.Sample(pct, out float pr, out float pg, out float pb);
+                                        pct = WaterfallEnhancer.ApplyPaletteShape(pct);
+                    palette.Sample(pct, out float pr, out float pg, out float pb);
                                         int o = (i * m_nDecimation) * pixel_size;
                                         row[o + 0] = (byte)Math.Max(0, Math.Min(255, (int)(pb + 0.5f)));
                                         row[o + 1] = (byte)Math.Max(0, Math.Min(255, (int)(pg + 0.5f)));
