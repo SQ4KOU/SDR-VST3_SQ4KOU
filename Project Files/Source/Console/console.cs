@@ -46131,6 +46131,9 @@ namespace Thetis
             // layout has finished, otherwise Expand/Collapse startup logic can
             // overwrite them with designer defaults.
             RestoreNativePanelLocationsFromState();
+            // From this point positions are immutable unless the operator uses
+            // Shift+LMB. This also seals controls that have no State entry yet.
+            SealNativePanelLocations();
         }
 
         public bool TwoTone
