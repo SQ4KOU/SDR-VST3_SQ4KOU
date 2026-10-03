@@ -1018,7 +1018,15 @@ namespace Thetis
 	private void btnTestGPU_Click(object sender, EventArgs e)
 	{
 		UpdateGPUInfoLabel();
-		MessageBox.Show("GPU: " + (Display.GPUName ?? "unknown") + "\nDetected Level: " + Display.GPUDetectionLevel + "\nFeatures: " + (GPUDetector.FeaturesList ?? "(none)") + "\nHasDeviceContext: " + GPUDetector.HasDeviceContext + "\nHasBuiltInEffects: " + GPUDetector.HasBuiltInEffects + "\nHasCustomShaders: " + GPUDetector.HasCustomShaders + "\n\nSee gpu_detection.log for details.", "GPU Test", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1, (MessageBoxOptions)262144);
+		MessageBox.Show("GPU: " + (Display.GPUName ?? "unknown") +
+            "\nDetected Level: " + Display.GPUDetectionLevel +
+            "\nFeatures: " + (GPUDetector.FeaturesList ?? "(none)") +
+            "\nHasDeviceContext: " + GPUDetector.HasDeviceContext +
+            "\nHasCustomShaders: " + GPUDetector.HasCustomShaders +
+            "\n\n" + Display.NativeGPUWaterfallSelfTest() +
+            "\n\nSee gpu_detection.log and renderer_diagnostics.log for details.",
+            "GPU Waterfall Test", MessageBoxButtons.OK, MessageBoxIcon.Asterisk,
+            MessageBoxDefaultButton.Button1, (MessageBoxOptions)262144);
 	}
 
 
