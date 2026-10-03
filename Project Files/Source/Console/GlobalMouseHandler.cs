@@ -111,7 +111,11 @@ namespace Thetis
         // change its X/Y. Only Shift+LMB drag is allowed to update the locked point.
         private readonly Dictionary<string, Point> _nativeLockedPanelLocations =
             new Dictionary<string, Point>(StringComparer.Ordinal);
-        private bool _nativeApplyingLockedPanelLocation;
+        // Authorization is per-control, not global. A LocationChanged callback can
+        // synchronously trigger layout of other controls; those other controls must
+        // remain protected even while one explicit restore is in progress.
+        private readonly HashSet<Control> _nativeAuthorizedLocationWrites =
+            new HashSet<Control>();
 
         private static readonly string[] _nativeModeSpecificPanelNames =
         {
@@ -209,7 +213,7 @@ namespace Thetis
         {
             if (panel == null) return;
 
-            _nativeApplyingLockedPanelLocation = true;
+            _nativeAuthorizedLocationWrites.Add(panel);
             try
             {
                 if (panel.Location != location)
@@ -217,7 +221,7 @@ namespace Thetis
             }
             finally
             {
-                _nativeApplyingLockedPanelLocation = false;
+                _nativeAuthorizedLocationWrites.Remove(panel);
             }
 
             if (updateLock)
@@ -226,11 +230,14 @@ namespace Thetis
 
         private void NativeWeldedPanel_LocationChanged(object sender, EventArgs e)
         {
-            if (_nativeApplyingLockedPanelLocation || IsDisposed || Disposing)
+            if (IsDisposed || Disposing)
                 return;
 
             Control panel = sender as Control;
             if (panel == null || !_nativeMovablePanelNames.Contains(panel.Name))
+                return;
+
+            if (_nativeAuthorizedLocationWrites.Contains(panel))
                 return;
 
             // Shift+LMB is the one and only path allowed to alter a locked position.
@@ -290,8 +297,7 @@ namespace Thetis
 
         private void NativeModeSpecificPanel_VisibleChanged(object sender, EventArgs e)
         {
-            if (_nativeApplyingModeSpecificLocation || _nativeApplyingLockedPanelLocation ||
-                !_nativeModeSpecificSharedLocation.HasValue)
+            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
                 return;
 
             Control panel = sender as Control;
@@ -306,8 +312,7 @@ namespace Thetis
 
         private void NativeModeSpecificPanel_LocationChanged(object sender, EventArgs e)
         {
-            if (_nativeApplyingModeSpecificLocation || _nativeApplyingLockedPanelLocation ||
-                !_nativeModeSpecificSharedLocation.HasValue)
+            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
                 return;
 
             if (_nativePanelDragPrimary != null &&
@@ -316,6 +321,9 @@ namespace Thetis
 
             Control panel = sender as Control;
             if (panel == null || IsDisposed || Disposing)
+                return;
+
+            if (_nativeAuthorizedLocationWrites.Contains(panel))
                 return;
 
             Point shared = _nativeModeSpecificSharedLocation.Value;
