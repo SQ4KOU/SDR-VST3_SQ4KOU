@@ -396,8 +396,7 @@ namespace Thetis
             {
                 if (!PersistNativePanelLocation(name)) continue;
 
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                Control panel = Controls.Find(name, true).FirstOrDefault();
 
                 if (panel == null) continue;
 
@@ -422,8 +421,7 @@ namespace Thetis
             {
                 if (!PersistNativePanelLocation(name)) continue;
 
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                Control panel = Controls.Find(name, true).FirstOrDefault();
                 if (panel != null)
                 {
                     if (_nativeLockedPanelLocations.TryGetValue(name, out Point locked))
@@ -442,8 +440,7 @@ namespace Thetis
 
             foreach (KeyValuePair<string, Point> kvp in captured)
             {
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == kvp.Key);
+                Control panel = Controls.Find(kvp.Key, true).FirstOrDefault();
                 if (panel == null) continue;
 
                 // Snapshot restore is an authorized programmatic write, but it does
@@ -508,8 +505,7 @@ namespace Thetis
 
             foreach (KeyValuePair<string, Point> kvp in saved)
             {
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == kvp.Key);
+                Control panel = Controls.Find(kvp.Key, true).FirstOrDefault();
 
                 if (panel == null) continue;
 
@@ -556,13 +552,11 @@ namespace Thetis
 
             while (c != null && c != this)
             {
-                if (c.Parent == this)
-                {
-                    if (IsNativeMovableControl(c))
-                        return c;
-
-                    break;
-                }
+                // Do not require Parent == Console. Some native layout paths may
+                // temporarily reparent controls; Shift+LMB must still resolve the
+                // actual movable block.
+                if (IsNativeMovableControl(c))
+                    return c;
 
                 c = c.Parent;
             }
@@ -621,8 +615,8 @@ namespace Thetis
 
             foreach (string name in names)
             {
-                Control found = Controls.Cast<Control>().FirstOrDefault(x => x.Name == name);
-                if (found != null && found.Parent == this)
+                Control found = Controls.Find(name, true).FirstOrDefault();
+                if (found != null)
                     yield return found;
             }
         }
