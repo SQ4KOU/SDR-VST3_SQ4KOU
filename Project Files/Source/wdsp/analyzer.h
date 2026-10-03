@@ -74,6 +74,8 @@ typedef struct _dp
 	int w_pix_buff[dMAX_PIXOUTS];							// number of pixel buffer owned by writing process
 	int r_pix_buff[dMAX_PIXOUTS];							// number of pixel buffer owned by reading process
 	int last_pix_buff[dMAX_PIXOUTS];						// number of the last pixel buffer written
+	double pixel_ref;									   // reference value stamped onto newly generated pixel buffers
+	double pixel_refs[dMAX_PIXOUTS][dNUM_PIXEL_BUFFS];		   // per-buffer reference returned by GetPixels
 	volatile LONG pb_ready[dMAX_PIXOUTS][dNUM_PIXEL_BUFFS];	// if value is 0, this data has already been read; 1 = fresh data to read
 	int num_average[dMAX_PIXOUTS];							// number of spans to average to create the pixels
 	int avail_frames[dMAX_PIXOUTS];							// number of pixel frames currently available to average
@@ -122,6 +124,7 @@ typedef struct _dp
 	double *snap_buff[dMAX_STITCH][dMAX_NUM_FFT];			// pointers to buffers for the snap
 
 	CRITICAL_SECTION PB_ControlsSection[dMAX_PIXOUTS];
+	CRITICAL_SECTION PixelRefSection;
 	CRITICAL_SECTION SetAnalyzerSection;
 	CRITICAL_SECTION BufferControlSection[dMAX_STITCH][dMAX_NUM_FFT];
 	CRITICAL_SECTION StitchSection;
@@ -211,5 +214,15 @@ void SnapSpectrumTimeout (int disp,
 	                      double* snap_buff,
 	                      DWORD timeout,
 	                      int* flag);
+
+extern __declspec(dllexport)
+void SetPixelRef(int disp, double pixel_ref);
+
+extern __declspec(dllexport)
+void GetPixels(int disp,
+	int pixout,
+	dOUTREAL* pix,
+	int* flag,
+	double* pixel_ref);
 
 #endif
