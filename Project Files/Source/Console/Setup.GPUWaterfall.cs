@@ -793,15 +793,18 @@ namespace Thetis
                 _ => detectedLevel,
             };
             int effectiveLevel = requestedLevel;
+            // Native Vortice GPU Waterfall does not depend on D2D built-in effects.
+            // Level 1 requires a live hardware D3D device; Level 2 additionally
+            // requires custom shader support.
             if (effectiveLevel >= 2 && !GPUDetector.HasCustomShaders)
-                effectiveLevel = GPUDetector.HasBuiltInEffects ? 1 : 0;
-            if (effectiveLevel >= 1 && !GPUDetector.HasBuiltInEffects)
+                effectiveLevel = GPUDetector.HasDeviceContext ? 1 : 0;
+            if (effectiveLevel >= 1 && !GPUDetector.HasDeviceContext)
                 effectiveLevel = 0;
 
             _renderFilterPending = false;
             _pendingGPUSelection = -1;
             if (_gpuStatusTimer != null) _gpuStatusTimer.Interval = 2000;
-            Display.GPUEffectsEnabled = effectiveLevel >= 1 && GPUDetector.HasBuiltInEffects;
+            Display.GPUEffectsEnabled = effectiveLevel >= 1 && GPUDetector.HasDeviceContext;
             Display.AutoEnableGPU = auto || effectiveLevel >= 1;
             UpdateWaterfallRenderQualityItems(effectiveLevel);
             UpdateWaterfallPaletteItems(effectiveLevel >= 1);
@@ -814,9 +817,9 @@ namespace Thetis
                 {
                     MessageBox.Show("Custom HLSL shaders (Level 2) are not available.\nUsing Level 1 (Built-in Effects) instead.", "GPU Acceleration", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1, (MessageBoxOptions)262144);
                 }
-                else if (requestedLevel >= 1 && !GPUDetector.HasBuiltInEffects)
+                else if (requestedLevel >= 1 && !GPUDetector.HasDeviceContext)
                 {
-                    MessageBox.Show("Built-in D2D Effects are not available on this system.\nUsing CPU post-processing (Level 0).", "GPU Acceleration", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1, (MessageBoxOptions)262144);
+                    MessageBox.Show("A hardware D3D11 device is not available.\nUsing CPU mode (Level 0).", "GPU Acceleration", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1, (MessageBoxOptions)262144);
                 }
             }
         }
