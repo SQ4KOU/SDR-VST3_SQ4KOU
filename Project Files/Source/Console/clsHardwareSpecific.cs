@@ -300,6 +300,13 @@ namespace Thetis
             {
                 if (NetworkIO.CurrentRadioProtocol == RadioProtocol.USB)
                 { //protocol 1
+                    // SQ4KOU: Red Pitaya P1 uses the proven legacy PS full-scale
+                    // reference. WDSP 2.10's generic 0.4072 value leaves the
+                    // upper PS3 collection buckets under-filled and causes
+                    // bursty/unstable feedback updates.
+                    if (_model == HPSDRModel.REDPITAYA)
+                        return 0.2899;
+
                     switch (_hardware)
                     {
                         default:

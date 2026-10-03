@@ -386,10 +386,26 @@ namespace Thetis
             SetupForm();
         }
 
+        private void ApplyHardwarePSPeak()
+        {
+            // Preserve the proven Red Pitaya / Protocol 1 PureSignal scaling.
+            // WDSP 2.10 initializes the generic engine at 0.4072; on RP P1 the
+            // established value is 0.2899. Apply it at the host boundary so
+            // other radios keep their native WDSP 2.10 defaults.
+            if (NetworkIO.CurrentRadioProtocol == RadioProtocol.USB &&
+                HardwareSpecific.Model == HPSDRModel.REDPITAYA)
+            {
+                _PShwpeak = HardwareSpecific.PSDefaultPeak;
+                puresignal.SetPSHWPeak(_txachannel, _PShwpeak);
+            }
+        }
+
         public void SetupForm()//EventArgs e)  //MW0LGE_[2.9.0.7]
         {
             if (_ttgenON == true)
                 btnPSTwoToneGen.BackColor = Color.FromArgb(_gcolor);
+
+            ApplyHardwarePSPeak();
 
             unsafe
             {
@@ -1016,6 +1032,8 @@ namespace Thetis
         public void ForcePS()
         {
             EventArgs e = EventArgs.Empty;
+            ApplyHardwarePSPeak();
+
             if (!_autoON)
             {
                 puresignal.SetPSControl(_txachannel, 1, 0, 0, 0);
