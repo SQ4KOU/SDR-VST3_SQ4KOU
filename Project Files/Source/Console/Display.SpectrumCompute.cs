@@ -704,6 +704,30 @@ namespace Thetis
             _wfComputeLutVersion = -1;
         }
 
+        internal static string NativeGPUWaterfallSelfTest()
+        {
+            try
+            {
+                if (_device == null || !_bDX2Setup)
+                    return "D3D11 live device: NOT READY";
+                if (m_bForceCPURendering)
+                    return "Force CPU: ON (GPU path intentionally disabled)";
+                bool compute = BuildNativeWaterfallComputePipeline(_device);
+                bool output = compute && EnsureNativeWaterfallOutput(_device, 64, Format.B8G8R8A8_UNorm);
+                bool temporal = output && EnsureNativeWaterfallPrev(_device, 0, 64);
+                return "D3D11 live device: OK\n" +
+                       "Native row shader: " + (compute ? "OK" : "FAIL") + "\n" +
+                       "GPU row texture: " + (output ? "OK" : "FAIL") + "\n" +
+                       "Temporal UAV: " + (temporal ? "OK" : "FAIL") + "\n" +
+                       "Exact GPU FFT requested: " + ExactNativeGPURequested + "\n" +
+                       "Native history owner: " + NativeGPUWaterfallOwnsAnyPane;
+            }
+            catch (Exception ex)
+            {
+                return "Native GPU Waterfall self-test FAILED: " + ex.Message;
+            }
+        }
+
         private static bool EnsureWaterfallComputeBuffers(ID3D11Device device, int count)
         {
             if (_wfComputeInputTex != null && _wfComputeInputTex.Description.Width == (uint)count)
@@ -1244,7 +1268,13 @@ namespace Thetis
                     GPUWaterfallLogger.LogRateLimited("WF-NATIVE", "rx" + rx, 1000,
                         "RX" + rx + " color=VorticeCS history=VorticeD3D11 present=VorticeD3D11" +
                         " format=" + format + " source=" + nDecimatedWidth +
-                        " width=" + W + " rows=" + paneRows);
+                        " width=" + W + " rows=" + paneRows +
+                        " tone=" + WaterfallEnhancer.ToneMap +
+                        " temporal=" + (_temporalEnabled ? _temporalAlpha : 0f) +
+                        " sharp=" + WaterfallEnhancer.PaletteSharpness +
+                        " contrast=" + WaterfallEnhancer.PaletteContrast +
+                        " quality=" + WaterfallEnhancer.Quality +
+                        " dither=" + WaterfallEnhancer.DitherEnabled);
                 }
                 return owns;
             }
