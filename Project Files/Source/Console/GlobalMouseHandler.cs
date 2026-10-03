@@ -192,8 +192,7 @@ namespace Thetis
         {
             foreach (string name in _nativeMovablePanelNames)
             {
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                Control panel = Controls.Find(name, true).FirstOrDefault();
                 if (panel == null) continue;
 
                 panel.LocationChanged -= NativeWeldedPanel_LocationChanged;
@@ -261,8 +260,7 @@ namespace Thetis
 
             foreach (string name in _nativeModeSpecificPanelNames)
             {
-                Control panel = Controls.Cast<Control>()
-                    .FirstOrDefault(c => c.Parent == this && c.Name == name);
+                Control panel = Controls.Find(name, true).FirstOrDefault();
                 if (panel == null) continue;
 
                 if (seed == null) seed = panel;
