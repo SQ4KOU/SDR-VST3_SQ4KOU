@@ -993,9 +993,9 @@ namespace Thetis
         private void setAdvancedView()
         {
             if (_advancedON)
-                console.psform.ClientSize = new System.Drawing.Size(560, 60);
+                console.psform.ClientSize = new System.Drawing.Size(665, 60);
             else
-                console.psform.ClientSize = new System.Drawing.Size(560, 300);
+                console.psform.ClientSize = new System.Drawing.Size(665, 362);
 
             chkAdvancedViewHidden.Checked = _advancedON;
         }
