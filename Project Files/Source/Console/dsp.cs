@@ -223,9 +223,7 @@ namespace Thetis
 
         [DllImport("wdsp.dll", EntryPoint = "SetRXACBLRun", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetRXACBLRun(int channel, bool run);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXACBLPosition", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXACBLPosition(int channel, int position); //0=before AGC, 1=after
+//0=before AGC, 1=after
         
 
         [DllImport("wdsp.dll", EntryPoint = "SetTXACFIRRun", CallingConvention = CallingConvention.Cdecl)]
@@ -244,16 +242,7 @@ namespace Thetis
         public static extern void SetRXAEMNRRun(int channel, int run);
 
         // rnnoise
-        [DllImport("wdsp.dll", EntryPoint = "SetRXARNNRRun", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXARNNRRun(int channel, int run);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXARNNRPosition", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXARNNRPosition(int channel, int position);
-
-        [DllImport("wdsp.dll", EntryPoint = "RNNRloadModel", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void RNNRloadModel(string file_path);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXARNNRUseDefaultGain", CallingConvention = CallingConvention.Cdecl)]
+[DllImport("wdsp.dll", EntryPoint = "SetRXARNNRUseDefaultGain", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetRXARNNRUseDefaultGain(int channel, int use_default_gain);
         //
 
