@@ -1,0 +1,41 @@
+name: Create SDR-VST3 WDSP 2.10 test release
+
+on:
+  push:
+    branches:
+      - feature/sq4kou-hardware
+    paths:
+      - .github/workflows/release-build202.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'Create SDR-VST3_WDSP_2.10_test release from build 202'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact build 202 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -L \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/SQ4KOU/SDR-VST3_SQ4KOU/actions/artifacts/11273066194/zip" \
+            -o "SDR-VST3_WDSP_2.10_test_build202.zip"
+
+      - name: Create GitHub release from build 202
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "SDR-VST3_WDSP_2.10_test" \
+            --repo "SQ4KOU/SDR-VST3_SQ4KOU" \
+            --target "dc39159df7580a8571887d76d8dee5f6a7318237" \
+            --title "SDR-VST3_WDSP_2.10_test" \
+            --notes "Test release based exactly on SDR-VST3 SQ4KOU Hardware build #202. PureSignal functional baseline with corrected PS window runtime size." \
+            "SDR-VST3_WDSP_2.10_test_build202.zip"
