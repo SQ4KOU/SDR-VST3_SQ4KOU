@@ -443,7 +443,7 @@
             this.btnPSResetEngine.Location = new System.Drawing.Point(434, 224);
             this.btnPSResetEngine.Name = "btnPSResetEngine";
             this.btnPSResetEngine.Selectable = true;
-            this.btnPSResetEngine.Size = new System.Drawing.Size(120, 20);
+            this.btnPSResetEngine.Size = new System.Drawing.Size(100, 20);
             this.btnPSResetEngine.TabIndex = 68;
             this.btnPSResetEngine.Text = "Reset PSA defaults";
             this.toolTip1.SetToolTip(this.btnPSResetEngine, "Restore WDSP 2.00 recommended PureSignal default parameters.");
@@ -986,7 +986,7 @@
             this.btnPSCalibrate.Location = new System.Drawing.Point(91, 12);
             this.btnPSCalibrate.Name = "btnPSCalibrate";
             this.btnPSCalibrate.Selectable = true;
-            this.btnPSCalibrate.Size = new System.Drawing.Size(74, 20);
+            this.btnPSCalibrate.Size = new System.Drawing.Size(71, 20);
             this.btnPSCalibrate.TabIndex = 19;
             this.btnPSCalibrate.Text = "Single Cal";
             this.toolTip1.SetToolTip(this.btnPSCalibrate, "Perform a singal calibration. This will happen up to 5 times in a row");
@@ -1092,7 +1092,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.Black;
-            this.ClientSize = new System.Drawing.Size(700, 390);
+            this.ClientSize = new System.Drawing.Size(560, 303);
             this.Controls.Add(this.chkShow2ToneMeasurements);
             this.Controls.Add(this.pbWarningSetPk);
             this.Controls.Add(this.chkAdvancedViewHidden);
