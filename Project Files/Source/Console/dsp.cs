@@ -241,36 +241,21 @@ namespace Thetis
         [DllImport("wdsp.dll", EntryPoint = "SetRXAEMNRRun", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetRXAEMNRRun(int channel, int run);
 
-        // rnnoise
-[DllImport("wdsp.dll", EntryPoint = "SetRXARNNRUseDefaultGain", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXARNNRUseDefaultGain(int channel, int use_default_gain);
-        //
+        // WDSP 2.10 Neural Noise Reduction (NNR)
+        [DllImport("wdsp.dll", EntryPoint = "SetRXANNRRun", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetRXANNRRun(int channel, int run);
 
-        //libspecbleach
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRRun", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRRun(int channel, int run);
+        [DllImport("wdsp.dll", EntryPoint = "SetRXANNRPosition", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetRXANNRPosition(int channel, int position);
 
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRPosition", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRPosition(int channel, int position);
+        [DllImport("wdsp.dll", EntryPoint = "SetRXANNRModel", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int SetRXANNRModel(int channel, int slot);
 
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRreductionAmount", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRreductionAmount(int channel, float amount);
+        [DllImport("wdsp.dll", EntryPoint = "GetRXANNRModel", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int GetRXANNRModel(int channel);
 
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRsmoothingFactor", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRsmoothingFactor(int channel, float factor);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRwhiteningFactor", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRwhiteningFactor(int channel, float factor);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRnoiseRescale", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRnoiseRescale(int channel, float factor);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRpostFilterThreshold", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRpostFilterThreshold(int channel, float threshold);
-
-        [DllImport("wdsp.dll", EntryPoint = "SetRXASBNRnoiseScalingType", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetRXASBNRnoiseScalingType(int channel, int noise_scaling_type);        
-        //
+        [DllImport("wdsp.dll", EntryPoint = "SetNNRModelPath", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern void SetNNRModelPath(string path);
 
         [DllImport("wdsp.dll", EntryPoint = "SetRXAEMNRPosition", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetRXAEMNRPosition(int channel, int position);

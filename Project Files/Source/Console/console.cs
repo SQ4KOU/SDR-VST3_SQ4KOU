@@ -748,7 +748,10 @@ namespace Thetis
             Splash.SetStatus("Initializing Components");        // Set progress point
             LogTool.AddLogEntry("Initialising components...", "COMP");
 
-            InitializeComponent();								// Windows Forms Generated Code
+            InitializeComponent();
+            // WDSP 2.10 native NNR is used by NR3; legacy NR4/SBNR is unavailable.
+            NR4ToolStripMenuItem.Enabled = false;
+            NR4ToolStripMenuItem_rx2.Enabled = false;								// Windows Forms Generated Code
             Common.DoubleBufferAll(this, true);
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,

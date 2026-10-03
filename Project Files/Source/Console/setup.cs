@@ -121,6 +121,12 @@ namespace Thetis
         {
             LogTool.AddLogEntry("      Setup init components...", "INITCOMPSETUP");
             InitializeComponent();
+            // WDSP 2.10 native NNR is used for NR3; legacy RNNoise/SBNR and CBL-position controls are unavailable.
+            grpRNnoise.Enabled = false;
+            groupBoxTS55.Enabled = false;
+            groupBoxTS56.Enabled = false;
+            chkCBlock_after_rx1.Enabled = false;
+            chkCBlock_after_rx2.Enabled = false;
             InitializeVacVstControls();
             InitializeTciVstControls();
             InitPhaseRotatorControls(); // Yurij-eu2av - 2026-07-08: build Phase Rotator extras programmatically
@@ -36978,7 +36984,7 @@ namespace Thetis
             }
 
             // empty string will use NULL (default) model in rnnoise
-            WDSP.RNNRloadModel(_nr3_model_file);
+            
         }
 
         //[2.10.3.12]MW0LGE this is a mirror the the rnnoise parse code from parse_lpcnet_weights.c
