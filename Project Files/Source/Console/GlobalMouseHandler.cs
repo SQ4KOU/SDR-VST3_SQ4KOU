@@ -105,9 +105,13 @@ namespace Thetis
         private Point? _nativeModeSpecificSharedLocation;
         private bool _nativeApplyingModeSpecificLocation;
         private bool _nativeModeSpecificRestorePending;
-        private readonly Dictionary<string, Point> _nativeAbsolutePanelLocations =
+        // Authoritative positions for panels that have been restored from State or
+        // explicitly moved by the operator. Once a position enters this table it is
+        // "welded": native layout code may resize/show/hide the control, but may not
+        // change its X/Y. Only Shift+LMB drag is allowed to update the locked point.
+        private readonly Dictionary<string, Point> _nativeLockedPanelLocations =
             new Dictionary<string, Point>(StringComparer.Ordinal);
-        private bool _nativeApplyingAbsolutePanelLocation;
+        private bool _nativeApplyingLockedPanelLocation;
 
         private static readonly string[] _nativeModeSpecificPanelNames =
         {
@@ -177,76 +181,71 @@ namespace Thetis
             _nativePanelShiftDragFilter = new NativePanelShiftDragFilter(this);
             Application.AddMessageFilter(_nativePanelShiftDragFilter);
             InitializeNativeModeSpecificLocationGuard();
-            InitializeNativeAbsoluteDisplayLocationGuard();
+            InitializeNativeWeldedLocationGuard();
         }
 
-        private static bool IsNativeAbsoluteDisplayPanelName(string name)
+        private void InitializeNativeWeldedLocationGuard()
         {
-            return name == "panelDisplay" || name == "panelDisplay2";
-        }
-
-        private void InitializeNativeAbsoluteDisplayLocationGuard()
-        {
-            foreach (string name in new[] { "panelDisplay", "panelDisplay2" })
+            foreach (string name in _nativeMovablePanelNames)
             {
                 Control panel = Controls.Cast<Control>()
                     .FirstOrDefault(c => c.Parent == this && c.Name == name);
                 if (panel == null) continue;
 
-                panel.LocationChanged -= NativeAbsoluteDisplayPanel_LocationChanged;
-                panel.LocationChanged += NativeAbsoluteDisplayPanel_LocationChanged;
+                panel.LocationChanged -= NativeWeldedPanel_LocationChanged;
+                panel.LocationChanged += NativeWeldedPanel_LocationChanged;
             }
         }
 
-        private void NativeAbsoluteDisplayPanel_LocationChanged(object sender, EventArgs e)
+        private bool IsNativePanelInActiveShiftDrag(Control panel)
         {
-            if (_nativeApplyingAbsolutePanelLocation || IsDisposed || Disposing)
+            return panel != null &&
+                   _nativePanelDragPrimary != null &&
+                   _nativePanelDragOrigins != null &&
+                   _nativePanelDragOrigins.ContainsKey(panel);
+        }
+
+        private void SetNativePanelLocationAuthorized(Control panel, Point location, bool updateLock)
+        {
+            if (panel == null) return;
+
+            _nativeApplyingLockedPanelLocation = true;
+            try
+            {
+                if (panel.Location != location)
+                    panel.Location = location;
+            }
+            finally
+            {
+                _nativeApplyingLockedPanelLocation = false;
+            }
+
+            if (updateLock)
+                _nativeLockedPanelLocations[panel.Name] = location;
+        }
+
+        private void NativeWeldedPanel_LocationChanged(object sender, EventArgs e)
+        {
+            if (_nativeApplyingLockedPanelLocation || IsDisposed || Disposing)
                 return;
 
             Control panel = sender as Control;
-            if (panel == null || !IsNativeAbsoluteDisplayPanelName(panel.Name))
+            if (panel == null || !_nativeMovablePanelNames.Contains(panel.Name))
                 return;
 
-            if (_nativePanelDragPrimary == panel)
+            // Shift+LMB is the one and only path allowed to alter a locked position.
+            if (IsNativePanelInActiveShiftDrag(panel))
                 return;
 
-            if (!_nativeAbsolutePanelLocations.TryGetValue(panel.Name, out Point requested))
+            if (!_nativeLockedPanelLocations.TryGetValue(panel.Name, out Point locked))
                 return;
 
-            int maxX = Math.Max(0, ClientSize.Width - panel.Width);
-            int maxY = Math.Max(0, ClientSize.Height - panel.Height);
-            Point target = new Point(
-                Math.Max(0, Math.Min(maxX, requested.X)),
-                Math.Max(0, Math.Min(maxY, requested.Y)));
-
-            if (panel.Location == target)
+            if (panel.Location == locked)
                 return;
 
-            BeginInvoke((MethodInvoker)delegate
-            {
-                if (IsDisposed || Disposing || _nativePanelDragPrimary == panel)
-                    return;
-
-                if (!_nativeAbsolutePanelLocations.TryGetValue(panel.Name, out Point saved))
-                    return;
-
-                int invokeMaxX = Math.Max(0, ClientSize.Width - panel.Width);
-                int invokeMaxY = Math.Max(0, ClientSize.Height - panel.Height);
-                Point restored = new Point(
-                    Math.Max(0, Math.Min(invokeMaxX, saved.X)),
-                    Math.Max(0, Math.Min(invokeMaxY, saved.Y)));
-
-                _nativeApplyingAbsolutePanelLocation = true;
-                try
-                {
-                    if (panel.Location != restored)
-                        panel.Location = restored;
-                }
-                finally
-                {
-                    _nativeApplyingAbsolutePanelLocation = false;
-                }
-            });
+            // Restore synchronously. Deferred BeginInvoke restoration allowed a native
+            // layout pass to win temporarily and was the source of visible/random jumps.
+            SetNativePanelLocationAuthorized(panel, locked, false);
         }
 
         private void InitializeNativeModeSpecificLocationGuard()
@@ -291,7 +290,8 @@ namespace Thetis
 
         private void NativeModeSpecificPanel_VisibleChanged(object sender, EventArgs e)
         {
-            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
+            if (_nativeApplyingModeSpecificLocation || _nativeApplyingLockedPanelLocation ||
+                !_nativeModeSpecificSharedLocation.HasValue)
                 return;
 
             Control panel = sender as Control;
@@ -306,7 +306,8 @@ namespace Thetis
 
         private void NativeModeSpecificPanel_LocationChanged(object sender, EventArgs e)
         {
-            if (_nativeApplyingModeSpecificLocation || !_nativeModeSpecificSharedLocation.HasValue)
+            if (_nativeApplyingModeSpecificLocation || _nativeApplyingLockedPanelLocation ||
+                !_nativeModeSpecificSharedLocation.HasValue)
                 return;
 
             if (_nativePanelDragPrimary != null &&
@@ -394,10 +395,13 @@ namespace Thetis
 
                 if (panel == null) continue;
 
-                Point location = IsNativeModeSpecificPanelName(name) &&
-                                 _nativeModeSpecificSharedLocation.HasValue
-                    ? _nativeModeSpecificSharedLocation.Value
-                    : panel.Location;
+                Point location;
+                if (_nativeLockedPanelLocations.TryGetValue(name, out Point locked))
+                    location = locked;
+                else if (IsNativeModeSpecificPanelName(name) && _nativeModeSpecificSharedLocation.HasValue)
+                    location = _nativeModeSpecificSharedLocation.Value;
+                else
+                    location = panel.Location;
 
                 state.Add(NativePanelLocationKeyPrefix + name + "/" +
                     location.X.ToString() + "|" + location.Y.ToString());
@@ -415,7 +419,12 @@ namespace Thetis
                 Control panel = Controls.Cast<Control>()
                     .FirstOrDefault(c => c.Parent == this && c.Name == name);
                 if (panel != null)
-                    captured[name] = panel.Location;
+                {
+                    if (_nativeLockedPanelLocations.TryGetValue(name, out Point locked))
+                        captured[name] = locked;
+                    else
+                        captured[name] = panel.Location;
+                }
             }
 
             return captured;
@@ -431,14 +440,9 @@ namespace Thetis
                     .FirstOrDefault(c => c.Parent == this && c.Name == kvp.Key);
                 if (panel == null) continue;
 
-                int maxX = Math.Max(0, ClientSize.Width - panel.Width);
-                int maxY = Math.Max(0, ClientSize.Height - panel.Height);
-                Point restored = new Point(
-                    Math.Max(0, Math.Min(maxX, kvp.Value.X)),
-                    Math.Max(0, Math.Min(maxY, kvp.Value.Y)));
-
-                if (panel.Location != restored)
-                    panel.Location = restored;
+                // Snapshot restore is an authorized programmatic write, but it does
+                // not create a new manual lock. Existing locks remain authoritative.
+                SetNativePanelLocationAuthorized(panel, kvp.Value, false);
             }
 
             // RX2/layout transitions can alter top-level Z-order without changing
@@ -481,21 +485,9 @@ namespace Thetis
 
                 if (panel == null) continue;
 
-                int maxX = Math.Max(0, ClientSize.Width - panel.Width);
-                int maxY = Math.Max(0, ClientSize.Height - panel.Height);
-
-                Point restored = new Point(
-                    Math.Max(0, Math.Min(maxX, kvp.Value.X)),
-                    Math.Max(0, Math.Min(maxY, kvp.Value.Y)));
-
-                if (panel.Location != restored)
-                    panel.Location = restored;
-            }
-
-            foreach (string absoluteName in new[] { "panelDisplay", "panelDisplay2" })
-            {
-                if (saved.TryGetValue(absoluteName, out Point absoluteLocation))
-                    _nativeAbsolutePanelLocations[absoluteName] = absoluteLocation;
+                // Saved State is an operator position. Restore it exactly and weld it.
+                // No automatic clamping/re-layout may silently alter the X/Y later.
+                SetNativePanelLocationAuthorized(panel, kvp.Value, true);
             }
 
             Point shared;
@@ -682,14 +674,17 @@ namespace Thetis
             if (_nativePanelDragPrimary == null)
                 return false;
 
+            // Commit the new operator-selected position for the complete drag group.
+            // From this point every native layout write to Location/Left/Top/Bounds is
+            // rejected by NativeWeldedPanel_LocationChanged.
+            foreach (Control panel in _nativePanelDragOrigins.Keys)
+                _nativeLockedPanelLocations[panel.Name] = panel.Location;
+
             if (IsNativeModeSpecificPanelName(_nativePanelDragPrimary.Name))
             {
                 _nativeModeSpecificSharedLocation = _nativePanelDragPrimary.Location;
                 ApplyNativeModeSpecificSharedLocation();
             }
-
-            if (IsNativeAbsoluteDisplayPanelName(_nativePanelDragPrimary.Name))
-                _nativeAbsolutePanelLocations[_nativePanelDragPrimary.Name] = _nativePanelDragPrimary.Location;
 
             _nativePanelDragPrimary = null;
             _nativePanelDragOrigins = null;
