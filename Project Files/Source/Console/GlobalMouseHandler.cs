@@ -102,6 +102,19 @@ namespace Thetis
         private Control _nativePanelDragPrimary;
         private Dictionary<Control, Point> _nativePanelDragOrigins;
         private Point _nativePanelDragMouseStart;
+        [Flags]
+        private enum NativeConsoleResizeEdges
+        {
+            None = 0,
+            Left = 1,
+            Right = 2,
+            Top = 4,
+            Bottom = 8
+        }
+
+        private NativeConsoleResizeEdges _nativeConsoleResizeEdges;
+        private Point _nativeConsoleResizeMouseStart;
+        private Rectangle _nativeConsoleResizeBoundsStart;
         private Point? _nativeModeSpecificSharedLocation;
         private bool _nativeApplyingModeSpecificLocation;
         private bool _nativeModeSpecificRestorePending;
@@ -621,6 +634,175 @@ namespace Thetis
             }
         }
 
+        private NativeConsoleResizeEdges GetNativeConsoleResizeEdges(Point screenMouse)
+        {
+            if (WindowState != FormWindowState.Normal)
+                return NativeConsoleResizeEdges.None;
+
+            Rectangle r = Bounds;
+            int edge = Math.Max(8, (int)Math.Round(10.0 * DeviceDpi / 96.0));
+
+            bool withinY = screenMouse.Y >= r.Top - edge && screenMouse.Y <= r.Bottom + edge;
+            bool withinX = screenMouse.X >= r.Left - edge && screenMouse.X <= r.Right + edge;
+
+            NativeConsoleResizeEdges edges = NativeConsoleResizeEdges.None;
+
+            if (withinY && Math.Abs(screenMouse.X - r.Left) <= edge)
+                edges |= NativeConsoleResizeEdges.Left;
+            if (withinY && Math.Abs(screenMouse.X - r.Right) <= edge)
+                edges |= NativeConsoleResizeEdges.Right;
+            if (withinX && Math.Abs(screenMouse.Y - r.Top) <= edge)
+                edges |= NativeConsoleResizeEdges.Top;
+            if (withinX && Math.Abs(screenMouse.Y - r.Bottom) <= edge)
+                edges |= NativeConsoleResizeEdges.Bottom;
+
+            return edges;
+        }
+
+        private static Cursor GetNativeConsoleResizeCursor(NativeConsoleResizeEdges edges)
+        {
+            bool left = (edges & NativeConsoleResizeEdges.Left) != 0;
+            bool right = (edges & NativeConsoleResizeEdges.Right) != 0;
+            bool top = (edges & NativeConsoleResizeEdges.Top) != 0;
+            bool bottom = (edges & NativeConsoleResizeEdges.Bottom) != 0;
+
+            if ((left && top) || (right && bottom))
+                return Cursors.SizeNWSE;
+            if ((right && top) || (left && bottom))
+                return Cursors.SizeNESW;
+            if (left || right)
+                return Cursors.SizeWE;
+            if (top || bottom)
+                return Cursors.SizeNS;
+
+            return Cursors.Default;
+        }
+
+        private bool BeginNativeConsoleShiftResize()
+        {
+            bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
+            if (!shiftDown || WindowState != FormWindowState.Normal)
+                return false;
+
+            NativeConsoleResizeEdges edges = GetNativeConsoleResizeEdges(Control.MousePosition);
+            if (edges == NativeConsoleResizeEdges.None)
+                return false;
+
+            // Edge resize has priority over panel movement when the pointer is in
+            // the resize zone. This is a manual resize and does not depend on the
+            // current FormBorderStyle or native Windows non-client hit testing.
+            _nativeConsoleResizeEdges = edges;
+            _nativeConsoleResizeMouseStart = Control.MousePosition;
+            _nativeConsoleResizeBoundsStart = Bounds;
+
+            Capture = true;
+            Cursor.Current = GetNativeConsoleResizeCursor(edges);
+            return true;
+        }
+
+        private bool ContinueNativeConsoleShiftResize()
+        {
+            if (_nativeConsoleResizeEdges == NativeConsoleResizeEdges.None)
+                return false;
+
+            bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
+            bool leftDown = (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left;
+
+            if (!shiftDown || !leftDown)
+            {
+                EndNativeConsoleShiftResize();
+                return true;
+            }
+
+            Point mouse = Control.MousePosition;
+            int dx = mouse.X - _nativeConsoleResizeMouseStart.X;
+            int dy = mouse.Y - _nativeConsoleResizeMouseStart.Y;
+
+            Rectangle start = _nativeConsoleResizeBoundsStart;
+            int left = start.Left;
+            int top = start.Top;
+            int right = start.Right;
+            int bottom = start.Bottom;
+
+            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
+                left += dx;
+            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Right) != 0)
+                right += dx;
+            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
+                top += dy;
+            if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Bottom) != 0)
+                bottom += dy;
+
+            int minWidth = Math.Max(1, MinimumSize.Width);
+            int minHeight = Math.Max(1, MinimumSize.Height);
+
+            if (!collapsedDisplay)
+            {
+                minWidth = Math.Max(minWidth, console_basis_size.Width);
+                minHeight = Math.Max(minHeight, console_basis_size.Height);
+            }
+
+            int width = right - left;
+            if (width < minWidth)
+            {
+                if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
+                    left = right - minWidth;
+                else
+                    right = left + minWidth;
+            }
+
+            int height = bottom - top;
+            if (height < minHeight)
+            {
+                if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
+                    top = bottom - minHeight;
+                else
+                    bottom = top + minHeight;
+            }
+
+            if (MaximumSize.Width > 0)
+            {
+                int maxWidth = MaximumSize.Width;
+                if (right - left > maxWidth)
+                {
+                    if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Left) != 0)
+                        left = right - maxWidth;
+                    else
+                        right = left + maxWidth;
+                }
+            }
+
+            if (MaximumSize.Height > 0)
+            {
+                int maxHeight = MaximumSize.Height;
+                if (bottom - top > maxHeight)
+                {
+                    if ((_nativeConsoleResizeEdges & NativeConsoleResizeEdges.Top) != 0)
+                        top = bottom - maxHeight;
+                    else
+                        bottom = top + maxHeight;
+                }
+            }
+
+            Rectangle next = Rectangle.FromLTRB(left, top, right, bottom);
+            if (Bounds != next)
+                Bounds = next;
+
+            Cursor.Current = GetNativeConsoleResizeCursor(_nativeConsoleResizeEdges);
+            return true;
+        }
+
+        private bool EndNativeConsoleShiftResize()
+        {
+            if (_nativeConsoleResizeEdges == NativeConsoleResizeEdges.None)
+                return false;
+
+            _nativeConsoleResizeEdges = NativeConsoleResizeEdges.None;
+            Capture = false;
+            Cursor.Current = Cursors.Default;
+            return true;
+        }
+
         private bool BeginNativePanelShiftDrag(IntPtr hwnd)
         {
             bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
@@ -716,6 +898,9 @@ namespace Thetis
 
         private sealed class NativePanelShiftDragFilter : IMessageFilter
         {
+            private const int WM_NCMOUSEMOVE = 0x00A0;
+            private const int WM_NCLBUTTONDOWN = 0x00A1;
+            private const int WM_NCLBUTTONUP = 0x00A2;
             private const int WM_MOUSEMOVE = 0x0200;
             private const int WM_LBUTTONDOWN = 0x0201;
             private const int WM_LBUTTONUP = 0x0202;
@@ -734,16 +919,28 @@ namespace Thetis
 
                 switch (m.Msg)
                 {
+                    case WM_NCLBUTTONDOWN:
                     case WM_LBUTTONDOWN:
-                        // Consume Shift+LMB only when it starts a drag on one of
-                        // the native movable Console panels. Without Shift the
-                        // original control receives the click unchanged (LOCKED).
+                        // Shift+LMB on the outer Console edge/corner resizes the
+                        // main window. Everywhere else the same gesture keeps its
+                        // existing meaning: move a native panel.
+                        if (_owner.BeginNativeConsoleShiftResize())
+                            return true;
+
                         return _owner.BeginNativePanelShiftDrag(m.HWnd);
 
+                    case WM_NCMOUSEMOVE:
                     case WM_MOUSEMOVE:
+                        if (_owner.ContinueNativeConsoleShiftResize())
+                            return true;
+
                         return _owner.ContinueNativePanelShiftDrag();
 
+                    case WM_NCLBUTTONUP:
                     case WM_LBUTTONUP:
+                        if (_owner.EndNativeConsoleShiftResize())
+                            return true;
+
                         return _owner.EndNativePanelShiftDrag();
                 }
 
