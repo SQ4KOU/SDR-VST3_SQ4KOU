@@ -36,6 +36,6 @@ jobs:
           gh release create "SDR-VST3_SQ4KOU_TEST" \
             --repo "SQ4KOU/SDR-VST3_SQ4KOU" \
             --target "d5cf53f8b0c0db3905a94cd14bfb223aae7631b5" \
-            --title "SDR-VST3_WDSP_2.10_test" \
+            --title "SDR-VST3_SQ4KOU_TEST" \
             --notes "Test release based exactly on SDR-VST3 SQ4KOU Hardware build #232. Includes welded panel positions and Shift+LMB resize/persistence for the Bandscope/Waterfall panel." \
-            "SDR-VST3_WDSP_2.10_test_build202.zip"
+            "SDR-VST3_SQ4KOU_TEST_build232.zip"
