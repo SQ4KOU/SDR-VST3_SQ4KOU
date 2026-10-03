@@ -131,6 +131,9 @@ namespace Thetis
             return _wf[rx == 2 ? 1 : 0].MeshOwnsPane;
         }
 
+        internal static bool NativeGPUWaterfallOwnsAnyPane =>
+            _wf[0].MeshOwnsPane || _wf[1].MeshOwnsPane;
+
         private static void CaptureWaterfallPaneParams(int nVerticalShift, int W, int H, int rx)
         {
             _wfPane[rx == 2 ? 1 : 0] = new WfPaneParams
