@@ -76,25 +76,6 @@ namespace Thetis
             internal static extern int CM_GPUWaterfallExact_RenderRow(
                 int channel, float lowThreshold, float highThreshold,
                 [Out] byte[] outputBGRA, int outputBytes);
-
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            internal static extern void CM_GPUWaterfallExact_SetPaletteEnhancement(
-                int channel, float sharpness, float contrast);
-        }
-
-        public static void ApplyExactGPUWaterfallPaletteEnhancement(float sharpness, float contrast)
-        {
-            sharpness = Math.Max(0f, Math.Min(1.5f, sharpness));
-            contrast = Math.Max(0f, Math.Min(1.5f, contrast));
-            try
-            {
-                for (int slot = 0; slot < 8; slot++)
-                    ExactGpuNative.CM_GPUWaterfallExact_SetPaletteEnhancement(slot, sharpness, contrast);
-            }
-            catch (Exception ex)
-            {
-                GPUWaterfallLogger.Log("PALETTE-ENHANCE-FAIL", ex.Message);
-            }
         }
 
         private static void ResetExactGPUWaterfallSourceForModeChange(bool enableIQ)
