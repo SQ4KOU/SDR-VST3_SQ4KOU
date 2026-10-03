@@ -1176,6 +1176,7 @@ namespace Thetis
 		float paletteSharpness = (float)tbPalSharp.Value / 100f;
 		lblPalSharpVal.Text = tbPalSharp.Value.ToString();
 		WaterfallEnhancer.SetPaletteSharpness(paletteSharpness);
+		Display.ApplyExactGPUWaterfallPaletteEnhancement(WaterfallEnhancer.PaletteSharpness, WaterfallEnhancer.PaletteContrast);
 	}
 
 
@@ -1184,6 +1185,7 @@ namespace Thetis
 		float paletteContrast = (float)tbPalContrast.Value / 100f;
 		lblPalContrastVal.Text = tbPalContrast.Value.ToString();
 		WaterfallEnhancer.SetPaletteContrast(paletteContrast);
+		Display.ApplyExactGPUWaterfallPaletteEnhancement(WaterfallEnhancer.PaletteSharpness, WaterfallEnhancer.PaletteContrast);
 	}
 
 
