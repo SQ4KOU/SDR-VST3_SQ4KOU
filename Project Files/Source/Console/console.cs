@@ -37745,80 +37745,14 @@ namespace Thetis
         protected override void WndProc(ref Message m)
         {
             const int WM_QUERYENDSESSION = 0x0011;
-            const int WM_NCHITTEST = 0x0084;
-
-            const int HTBORDER = 18;
-            const int HTLEFT = 10;
-            const int HTRIGHT = 11;
-            const int HTTOP = 12;
-            const int HTTOPLEFT = 13;
-            const int HTTOPRIGHT = 14;
-            const int HTBOTTOM = 15;
-            const int HTBOTTOMLEFT = 16;
-            const int HTBOTTOMRIGHT = 17;
-
             // Listen for operating system messages.
+
             if (m.Msg == WM_QUERYENDSESSION)
             {
                 chkPower.Checked = false;
                 this.Close();
-                return;
             }
-
-            base.WndProc(ref m);
-
-            // SQ4KOU: the main Console size is intentionally locked during normal
-            // operation. Holding Shift while grabbing an outer edge/corner with LMB
-            // enables the standard Windows resize operation. This only changes the
-            // Console bounds; the existing Console_Resize/ResizeConsole path remains
-            // authoritative for Bandscope/Waterfall and the rest of the layout.
-            if (m.Msg == WM_NCHITTEST && WindowState == FormWindowState.Normal)
-            {
-                bool shiftDown =
-                    (Control.ModifierKeys & Keys.Shift) == Keys.Shift ||
-                    Common.ShiftKeyDown;
-
-                int hit = unchecked((int)m.Result.ToInt64());
-                bool nativeResizeHit =
-                    hit == HTLEFT || hit == HTRIGHT ||
-                    hit == HTTOP || hit == HTBOTTOM ||
-                    hit == HTTOPLEFT || hit == HTTOPRIGHT ||
-                    hit == HTBOTTOMLEFT || hit == HTBOTTOMRIGHT;
-
-                if (!shiftDown)
-                {
-                    // Do not allow accidental resize without Shift. Keep caption,
-                    // system buttons and all other non-client behavior untouched.
-                    if (nativeResizeHit)
-                        m.Result = (IntPtr)HTBORDER;
-                    return;
-                }
-
-                // Do our own edge test as well. This keeps Shift-resize available
-                // even if a Windows theme/DPI setting returns a non-resize hit for
-                // a visually narrow border.
-                long lp = m.LParam.ToInt64();
-                int screenX = unchecked((short)(lp & 0xFFFF));
-                int screenY = unchecked((short)((lp >> 16) & 0xFFFF));
-
-                Rectangle r = Bounds;
-                int edge = Math.Max(6, (int)Math.Round(8.0 * DeviceDpi / 96.0));
-
-                bool left = screenX >= r.Left - edge && screenX <= r.Left + edge;
-                bool right = screenX >= r.Right - edge && screenX <= r.Right + edge;
-                bool top = screenY >= r.Top - edge && screenY <= r.Top + edge;
-                bool bottom = screenY >= r.Bottom - edge && screenY <= r.Bottom + edge;
-
-                // Corner hit zones take precedence over straight edges.
-                if (left && top) m.Result = (IntPtr)HTTOPLEFT;
-                else if (right && top) m.Result = (IntPtr)HTTOPRIGHT;
-                else if (left && bottom) m.Result = (IntPtr)HTBOTTOMLEFT;
-                else if (right && bottom) m.Result = (IntPtr)HTBOTTOMRIGHT;
-                else if (left) m.Result = (IntPtr)HTLEFT;
-                else if (right) m.Result = (IntPtr)HTRIGHT;
-                else if (top) m.Result = (IntPtr)HTTOP;
-                else if (bottom) m.Result = (IntPtr)HTBOTTOM;
-            }
+            else base.WndProc(ref m);
         }
 
         private void chkFWCATUBypass_Click(object sender, System.EventArgs e)
