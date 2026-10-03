@@ -82,6 +82,43 @@ public static class WaterfallEnhancer
 		_paletteContrast = ((value < 0f) ? 0f : ((value > 1.5f) ? 1.5f : value));
 	}
 
+	public static float ApplyPaletteShape(float percent)
+	{
+		if (percent <= 0f) return 0f;
+		if (percent >= 1f) return 1f;
+
+		// Palette Contrast expands/compresses the normalized palette position
+		// around the midpoint. 0 = neutral; 1.5 = strong contrast.
+		if (_paletteContrast > 0f)
+		{
+			float factor = 1f + _paletteContrast;
+			percent = 0.5f + (percent - 0.5f) * factor;
+			if (percent <= 0f) return 0f;
+			if (percent >= 1f) return 1f;
+		}
+
+		// Palette Sharpness blends toward a smooth S-curve. This increases
+		// separation between low/mid/high palette regions without changing
+		// the selected palette or thresholds. Values above 1 continue the
+		// effect with a second smoothstep pass.
+		if (_paletteSharpness > 0f)
+		{
+			float smooth = percent * percent * (3f - 2f * percent);
+			float first = Math.Min(1f, _paletteSharpness);
+			percent += (smooth - percent) * first;
+
+			if (_paletteSharpness > 1f)
+			{
+				float smooth2 = percent * percent * (3f - 2f * percent);
+				percent += (smooth2 - percent) * Math.Min(1f, _paletteSharpness - 1f);
+			}
+		}
+
+		if (percent < 0f) return 0f;
+		if (percent > 1f) return 1f;
+		return percent;
+	}
+
 	public static void SetToneMap(ToneMapMode mode)
 	{
 		ToneMap = mode;
