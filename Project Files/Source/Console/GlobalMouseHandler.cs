@@ -457,6 +457,28 @@ namespace Thetis
             ApplyNativeModeSpecificSharedLocation();
         }
 
+        private void SealNativePanelLocations()
+        {
+            // After startup restoration, every movable native control becomes welded,
+            // including controls that had no State entry yet. This removes the last
+            // loophole where ordinary LMB/native layout could move an unpersisted panel.
+            foreach (string name in _nativeMovablePanelNames)
+            {
+                Control panel = Controls.Find(name, true).FirstOrDefault();
+                if (panel == null) continue;
+
+                if (IsNativeModeSpecificPanelName(name) &&
+                    _nativeModeSpecificSharedLocation.HasValue)
+                {
+                    _nativeLockedPanelLocations[name] = _nativeModeSpecificSharedLocation.Value;
+                }
+                else
+                {
+                    _nativeLockedPanelLocations[name] = panel.Location;
+                }
+            }
+        }
+
         private void RestoreNativePanelLocationsFromState()
         {
             Dictionary<string, Point> saved = new Dictionary<string, Point>(StringComparer.Ordinal);
