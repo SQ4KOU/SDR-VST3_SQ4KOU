@@ -169,8 +169,6 @@ struct ExactState
     ID3D11Texture2D* rowStaging = 0;
     ID3D11Buffer* rowConstants = 0;
     int ditherRow = 0;
-    float paletteSharpness = 0.0f;
-    float paletteContrast = 0.0f;
 
     std::vector<Float2> iq;
     std::vector<float> win;
@@ -561,8 +559,8 @@ extern "C" __declspec(dllexport) int __cdecl CM_GPUWaterfallExact_RenderRow(
     p.QualityContrast = 0.0f;
     p.SaturationBoost = 0.0f;
     p.ContrastBoost = 0.0f;
-    p.PaletteSharpness = s.paletteSharpness;
-    p.PaletteContrast = s.paletteContrast;
+    p.PaletteSharpness = 0.0f;
+    p.PaletteContrast = 0.0f;
 
     s.context->UpdateSubresource(s.rowConstants, 0, 0, &p, 0, 0);
     s.context->CSSetShader(s.rowShader, 0, 0);
@@ -587,15 +585,6 @@ extern "C" __declspec(dllexport) int __cdecl CM_GPUWaterfallExact_RenderRow(
     s.context->Unmap(s.rowStaging, 0);
     ++s.ditherRow;
     return 1;
-}
-
-extern "C" __declspec(dllexport) void __cdecl CM_GPUWaterfallExact_SetPaletteEnhancement(
-    int channel, float sharpness, float contrast)
-{
-    if (channel < 0 || channel >= EXACT_WF_MAX_CHANNELS) return;
-    ExactState& s = g_exact[channel];
-    s.paletteSharpness = std::max(0.0f, std::min(1.5f, sharpness));
-    s.paletteContrast = std::max(0.0f, std::min(1.5f, contrast));
 }
 
 extern "C" __declspec(dllexport) void __cdecl CM_GPUWaterfallExact_Free(int channel)
