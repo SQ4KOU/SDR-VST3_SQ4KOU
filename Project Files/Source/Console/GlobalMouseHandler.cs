@@ -634,14 +634,8 @@ namespace Thetis
             }
         }
 
-        private NativeConsoleResizeEdges GetNativeConsoleResizeEdges(Point screenMouse)
+        private static NativeConsoleResizeEdges GetNativeResizeEdgesForRectangle(Rectangle r, Point screenMouse, int edge)
         {
-            if (WindowState != FormWindowState.Normal)
-                return NativeConsoleResizeEdges.None;
-
-            Rectangle r = Bounds;
-            int edge = Math.Max(8, (int)Math.Round(10.0 * DeviceDpi / 96.0));
-
             bool withinY = screenMouse.Y >= r.Top - edge && screenMouse.Y <= r.Bottom + edge;
             bool withinX = screenMouse.X >= r.Left - edge && screenMouse.X <= r.Right + edge;
 
@@ -657,6 +651,26 @@ namespace Thetis
                 edges |= NativeConsoleResizeEdges.Bottom;
 
             return edges;
+        }
+
+        private NativeConsoleResizeEdges GetNativeConsoleResizeEdges(Point screenMouse)
+        {
+            if (WindowState != FormWindowState.Normal)
+                return NativeConsoleResizeEdges.None;
+
+            int edge = Math.Max(10, (int)Math.Round(12.0 * DeviceDpi / 96.0));
+
+            if (pnlDisplay != null && !pnlDisplay.IsDisposed && pnlDisplay.Visible)
+            {
+                Rectangle displayRect = pnlDisplay.RectangleToScreen(pnlDisplay.ClientRectangle);
+                NativeConsoleResizeEdges displayEdges =
+                    GetNativeResizeEdgesForRectangle(displayRect, screenMouse, edge);
+
+                if (displayEdges != NativeConsoleResizeEdges.None)
+                    return displayEdges;
+            }
+
+            return GetNativeResizeEdgesForRectangle(Bounds, screenMouse, edge);
         }
 
         private static Cursor GetNativeConsoleResizeCursor(NativeConsoleResizeEdges edges)
