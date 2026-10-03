@@ -184,7 +184,7 @@ namespace Thetis
             _ps_closing = true;
             _bPSRunning = false;
             Debug.Print(DateTime.UtcNow.Ticks.ToString() + " PSForm: Stopping PS Thread");
-            if (_ps_thread != null && _ps_thread.IsAlive) _ps_thread.Join(200);
+            if (_ps_thread != null && _ps_thread.IsAlive) _ps_thread.Join(1000);
             Debug.Print(DateTime.UtcNow.Ticks.ToString()  + " PSForm: PS Thread Stopped");
 
             if (console != null)
@@ -426,17 +426,16 @@ namespace Thetis
             if (ampv != null)
             {
                 _ampViewDone.Reset();
-                try
-                {
-                    ampv.BeginInvoke((Action)(() => ampv.CloseDown() ));
-                }
-                catch { }
+                ampv.Invoke((Action)(() => ampv.CloseDown() ));
 
-                _ampViewDone.Wait(2000);
+                _ampViewDone.Wait();
 
                 if (ampvThread != null && ampvThread.IsAlive)
                 {
-                    ampvThread.Join(1000);
+                    if (!ampvThread.Join(1000))
+                    {
+                        ampvThread.Abort();
+                    }
                 }
 
                 ampvThread = null;
@@ -459,7 +458,6 @@ namespace Thetis
                 ampvThread = new Thread(RunAmpv);
                 ampvThread.SetApartmentState(ApartmentState.STA);
                 ampvThread.Name = "Ampv Thread";
-                ampvThread.IsBackground = true;
                 ampvThread.Start();
             }
         }
@@ -995,9 +993,9 @@ namespace Thetis
         private void setAdvancedView()
         {
             if (_advancedON)
-                console.psform.ClientSize = new System.Drawing.Size(700, 70);
+                console.psform.ClientSize = new System.Drawing.Size(560, 60);
             else
-                console.psform.ClientSize = new System.Drawing.Size(700, 390);
+                console.psform.ClientSize = new System.Drawing.Size(560, 300);
 
             chkAdvancedViewHidden.Checked = _advancedON;
         }
