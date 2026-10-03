@@ -774,6 +774,9 @@ namespace Thetis
             _nativeDisplayResizeMouseStart = Control.MousePosition;
             _nativeDisplayResizeBoundsStart = displayPanel.Bounds;
 
+            BandUiDiagnostics.Stage("DisplayResize.begin",
+                $"edges={edges} bounds={displayPanel.Bounds} mouse={Control.MousePosition}");
+
             Capture = true;
             Cursor.Current = GetNativeConsoleResizeCursor(edges);
             return true;
@@ -869,11 +872,31 @@ namespace Thetis
             {
                 _nativeLockedPanelLocations["panelDisplay"] = displayPanel.Location;
                 _nativeLockedDisplayPanelSize = displayPanel.Size;
+                BandUiDiagnostics.Stage("DisplayResize.end",
+                    $"bounds={displayPanel.Bounds} size={displayPanel.Size}");
             }
 
             _nativeDisplayResizeEdges = NativeConsoleResizeEdges.None;
             Capture = false;
             Cursor.Current = Cursors.Default;
+            return true;
+        }
+
+        private bool UpdateNativeDisplayResizeHover()
+        {
+            if (_nativeDisplayResizeEdges != NativeConsoleResizeEdges.None ||
+                _nativePanelDragPrimary != null)
+                return false;
+
+            bool shiftDown = (Control.ModifierKeys & Keys.Shift) == Keys.Shift || Common.ShiftKeyDown;
+            if (!shiftDown)
+                return false;
+
+            NativeConsoleResizeEdges edges = GetNativeDisplayResizeEdges(Control.MousePosition);
+            if (edges == NativeConsoleResizeEdges.None)
+                return false;
+
+            Cursor.Current = GetNativeConsoleResizeCursor(edges);
             return true;
         }
 
@@ -1008,7 +1031,10 @@ namespace Thetis
                         if (_owner.ContinueNativeDisplayShiftResize())
                             return true;
 
-                        return _owner.ContinueNativePanelShiftDrag();
+                        if (_owner.ContinueNativePanelShiftDrag())
+                            return true;
+
+                        return _owner.UpdateNativeDisplayResizeHover();
 
                     case WM_NCLBUTTONUP:
                     case WM_LBUTTONUP:
