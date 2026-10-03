@@ -194,7 +194,7 @@
             this.udPSEMAAlpha.Size = new System.Drawing.Size(50, 20);
             this.udPSEMAAlpha.TabIndex = 61;
             this.udPSEMAAlpha.Value = new decimal(new int[] {
-            100,
+            30,
             0,
             0,
             131072});

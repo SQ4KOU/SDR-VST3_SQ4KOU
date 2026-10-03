@@ -48,6 +48,20 @@ typedef struct _calcc
 	double hw_scale;
 	double rx_scale;
 
+	// PureSignal 3.0 runtime controls. These mirror the advanced UI and replace
+	// the fixed WDSP 2.10 compile-time defaults without changing the DSP algorithm.
+	int    ps_stbl;
+	double ps_ema_alpha;
+	double ps_pin_alpha;
+	int    ps_pin_mode;
+	int    ps_eq_enable;
+	int    ps_dcb_enable;
+	double ps_dcb_cap;
+	double ps_outlier_sigma;
+	int    ps_pending_nbucks;
+	int    ps_pending_spi;
+	int    ps_collection_dirty;
+
 	PSCOLLECTION ps_colct;
 
 	double* env_TX;
@@ -325,6 +339,8 @@ typedef struct _psCollection
 {
 	psSample* smps;
 	int nsamps;
+	int nbucks;
+	int spi;
 	int tpb    [SAMPLE_NBUCKS];
 	double bbtm[SAMPLE_NBUCKS + 1];
 	int bidx   [SAMPLE_NBUCKS];
@@ -334,39 +350,53 @@ typedef struct _psCollection
 	int nfull;
 } psCollection, *PSCOLLECTION;
 
-static PSCOLLECTION build_collection()
+static int valid_collection_layout(int nbucks, int spi)
 {
-	PSCOLLECTION collect = (PSCOLLECTION)malloc0(sizeof(psCollection));
-	const double s_minx = SAMPLE_MIN_X;
-	collect->bbtm[ 0] = s_minx; collect->tpb[ 0] = 256;
-	collect->bbtm[ 1] = 0.0625; collect->tpb[ 1] = 256;
-	collect->bbtm[ 2] = 0.1250; collect->tpb[ 2] = 256;
-	collect->bbtm[ 3] = 0.1875; collect->tpb[ 3] = 256;
-	collect->bbtm[ 4] = 0.2500; collect->tpb[ 4] = 256;
-	collect->bbtm[ 5] = 0.3125; collect->tpb[ 5] = 256;
-	collect->bbtm[ 6] = 0.3750; collect->tpb[ 6] = 256;
-	collect->bbtm[ 7] = 0.4375; collect->tpb[ 7] = 256;
-	collect->bbtm[ 8] = 0.5000; collect->tpb[ 8] = 256;
-	collect->bbtm[ 9] = 0.5625; collect->tpb[ 9] = 256;
-	collect->bbtm[10] = 0.6250; collect->tpb[10] = 256;
-	collect->bbtm[11] = 0.6875; collect->tpb[11] = 256;
-	collect->bbtm[12] = 0.7500; collect->tpb[12] = 256;
-	collect->bbtm[13] = 0.8125; collect->tpb[13] = 256;
-	collect->bbtm[14] = 0.8750; collect->tpb[14] = 256;
-	collect->bbtm[15] = 0.9375; collect->tpb[15] = 256;
-	collect->bbtm[SAMPLE_NBUCKS] = 1.0;
-	int n = 0;
-	for (int i = 0; i < SAMPLE_NBUCKS; i++)
+	return ((nbucks == 16 && spi == 256) ||
+			(nbucks == 8  && spi == 512) ||
+			(nbucks == 4  && spi == 1024));
+}
+
+static void configure_collection(PSCOLLECTION collect, int nbucks, int spi)
+{
+	if (!valid_collection_layout(nbucks, spi))
 	{
-		collect->bidx[i] = n;
+		nbucks = 16;
+		spi = 256;
+	}
+
+	collect->nbucks = nbucks;
+	collect->spi = spi;
+	collect->nsamps = nbucks * spi;
+	collect->nfull = 0;
+
+	for (int i = 0; i < Collect->nbucks; i++)
+	{
+		collect->tpb[i] = 0;
+		collect->bbtm[i] = 1.0;
+		collect->bidx[i] = 0;
 		collect->nidx[i] = 0;
 		collect->cpb[i] = 0;
 		collect->bfull[i] = 0;
-		n += collect->tpb[i];
 	}
-	collect->nsamps = n;
-	collect->smps = (psSample*)malloc0(n * sizeof(psSample));
-	collect->nfull = 0;
+
+	int n = 0;
+	for (int i = 0; i < nbucks; i++)
+	{
+		collect->bbtm[i] = (i == 0) ? SAMPLE_MIN_X : (double)i / (double)nbucks;
+		collect->tpb[i] = spi;
+		collect->bidx[i] = n;
+		n += spi;
+	}
+	collect->bbtm[nbucks] = 1.0;
+}
+
+static PSCOLLECTION build_collection(int nbucks, int spi)
+{
+	PSCOLLECTION collect = (PSCOLLECTION)malloc0(sizeof(psCollection));
+	configure_collection(collect, nbucks, spi);
+	// All supported layouts contain exactly 4096 samples; allocate the maximum.
+	collect->smps = (psSample*)malloc0((16 * 256) * sizeof(psSample));
 	return collect;
 }
 
@@ -401,11 +431,11 @@ static void putSample(double* tx, double* rx, double hw_scale, PSCOLLECTION Coll
 	double env_rx = sqrt(rx[0] * rx[0] + rx[1] * rx[1]);
 	if (env_tx < 1.0e-30 || env_rx < 1.0e-30) return;
 	double norm_tx = env_tx * hw_scale;
-	int buck = find_range_index(Collect->bbtm, SAMPLE_NBUCKS + 1, norm_tx);
+	int buck = find_range_index(Collect->bbtm, Collect->nbucks + 1, norm_tx);
 	if (buck < 0) return;
-	if (buck >= SAMPLE_NBUCKS)
+	if (buck >= Collect->nbucks)
 	{
-		if (SAMPLE_ACCEPT_OVERRANGE)  buck = SAMPLE_NBUCKS - 1;
+		if (SAMPLE_ACCEPT_OVERRANGE)  buck = Collect->nbucks - 1;
 		else return;
 	}
 	int index_to_fill = Collect->bidx[buck] + Collect->nidx[buck];
@@ -425,11 +455,11 @@ static void putSample(double* tx, double* rx, double hw_scale, PSCOLLECTION Coll
 static int sampleCheckAndUpdate(PSCOLLECTION Collect)
 {
 	int rval = 0;
-	if (Collect->nfull == SAMPLE_NBUCKS)
+	if (Collect->nfull == Collect->nbucks)
 	{
 		rval = 1;
 		Collect->nfull = 0;
-		for (int i = 0; i < SAMPLE_NBUCKS; i++)
+		for (int i = 0; i < Collect->nbucks; i++)
 		{
 			Collect->nidx[i] = 0;
 			Collect->cpb[i] = 0;
@@ -442,7 +472,7 @@ static int sampleCheckAndUpdate(PSCOLLECTION Collect)
 static void sampleCollectClear(PSCOLLECTION Collect)
 {
 	Collect->nfull = 0;
-	for (int i = 0; i < SAMPLE_NBUCKS; i++)
+	for (int i = 0; i < Collect->nbucks; i++)
 	{
 		Collect->nidx[i] = 0;
 		Collect->cpb[i] = 0;
@@ -910,9 +940,9 @@ static void size_calcc (CALCC a)
 	a->c_anchor_valid = 0;
 	a->s_anchor_valid = 0;
 
-	curve_ema_init2(&a->m_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND,  0.1, 2.0);
-	curve_ema_init2(&a->c_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND, -1.1, 1.1);
-	curve_ema_init2(&a->s_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND, -1.1, 1.1);
+	curve_ema_init2(&a->m_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND,  0.1, 2.0);
+	curve_ema_init2(&a->c_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND, -1.1, 1.1);
+	curve_ema_init2(&a->s_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND, -1.1, 1.1);
 
 	a->m_fold_prev      = 0;
 	a->m_ctrl_n         = 0;
@@ -1033,7 +1063,20 @@ CALCC create_calcc (int channel, int runcal, int size, int rate, double hw_scale
 	a->ctrl.loopdelay = loopdelay;
 	a->mox = mox;
 
-	a->ps_colct = build_collection();
+	// WDSP 2.10 PureSignal 3.0 defaults exposed by the Advanced UI.
+	a->ps_stbl = 1;
+	a->ps_ema_alpha = PS_NS_EMA_ALPHA;
+	a->ps_pin_alpha = EXTP0_PIN_ALPHA;
+	a->ps_pin_mode = PS_NF_PIN_START;
+	a->ps_eq_enable = EQ_ENABLE;
+	a->ps_dcb_enable = DCB_ENABLED;
+	a->ps_dcb_cap = DCB_CAP;
+	a->ps_outlier_sigma = PS_NF_OUTLIER_SIGMA;
+	a->ps_pending_nbucks = 16;
+	a->ps_pending_spi = 256;
+	a->ps_collection_dirty = 0;
+
+	a->ps_colct = build_collection(a->ps_pending_nbucks, a->ps_pending_spi);
 
 	a->info  = (int *) malloc0 (16 * sizeof (int));
 	a->binfo = (int *) malloc0 (16 * sizeof (int));
@@ -1173,23 +1216,23 @@ static void calc (CALCC a)
 			        + b->smps[i].tx.Q * b->smps[i].rx.I) / norm;
 	}
 
-	if (DCB_ENABLED)
+	if (a->ps_dcb_enable)
 	{
 		for (int i = 0; i < a->nsamps; i++)
 			a->dcb_phasor_mag[i] = sqrt(a->yc[i]*a->yc[i] + a->ys[i]*a->ys[i]);
 
 		double m_anc = detect_clean_boundary(a->m_dcb, a->x, a->ym, NULL, a->nsamps,
-		                   0.0, DCB_CAP + 0.05, DCB_NBINS,
+		                   0.0, a->ps_dcb_cap + 0.05, DCB_NBINS,
 		                   DCB_THRESH, DCB_CONFIRM,
-		                   DCB_FLOOR, DCB_CAP, DCB_MIN_PER_BIN);
+		                   DCB_FLOOR, a->ps_dcb_cap, DCB_MIN_PER_BIN);
 		double c_anc = detect_clean_boundary(a->c_dcb, a->x, a->yc, a->dcb_phasor_mag, a->nsamps,
-		                   0.0, DCB_CAP + 0.05, DCB_NBINS,
+		                   0.0, a->ps_dcb_cap + 0.05, DCB_NBINS,
 						   DCB_THRESH, DCB_CONFIRM,
-						   DCB_FLOOR, DCB_CAP, DCB_MIN_PER_BIN);
+						   DCB_FLOOR, a->ps_dcb_cap, DCB_MIN_PER_BIN);
 		double s_anc = detect_clean_boundary(a->s_dcb, a->x, a->ys, a->dcb_phasor_mag, a->nsamps,
-		                   0.0, DCB_CAP + 0.05, DCB_NBINS,
+		                   0.0, a->ps_dcb_cap + 0.05, DCB_NBINS,
 						   DCB_THRESH, DCB_CONFIRM,
-						   DCB_FLOOR, DCB_CAP, DCB_MIN_PER_BIN);
+						   DCB_FLOOR, a->ps_dcb_cap, DCB_MIN_PER_BIN);
 
 		if (!a->m_anchor_valid) { a->m_anchor_ema = m_anc; a->m_anchor_valid = 1; }
 		else a->m_anchor_ema = DCB_ALPHA * m_anc + (1.0 - DCB_ALPHA) * a->m_anchor_ema;
@@ -1206,7 +1249,7 @@ static void calc (CALCC a)
 	}
 
 	int eq_used = 0;
-	if (EQ_ENABLE)
+	if (a->ps_eq_enable)
 	{
 		a->eq_n = equalize_density(a);
 		if (a->eq_n >= EQ_MIN_PTS) eq_used = 1;
@@ -1234,7 +1277,7 @@ static void calc (CALCC a)
 				eff_alpha = EXTP0_PIN_WARMUP_ALPHA;
 			else
 				eff_alpha = (pin_res.confidence == EXTRAP_CONFIDENT)
-					? EXTP0_PIN_ALPHA : EXTP0_PIN_ALPHA * 0.5;
+					? a->ps_pin_alpha : a->ps_pin_alpha * 0.5;
 			a->m_y_pin_try = eff_alpha * y_pin_raw
 				+ (1.0 - eff_alpha) * a->m_y_pin_ema;
 			if (a->m_pin_cycle <= EXTP0_PIN_WARMUP_CYCLES) a->m_pin_cycle++;
@@ -1250,7 +1293,7 @@ static void calc (CALCC a)
 	a->m_config->pre_filter_x_min    = PS_NF_MAG_PREFILT_XMIN;
 	a->m_config->pre_filter_y_max    = PS_NF_MAG_PREFILT_YMAX;
 	a->m_config->uniform_knots       = PS_NF_UNIFORM_KNOTS;
-	a->m_config->pin_start           = PS_NF_PIN_START;
+	a->m_config->pin_start           = a->ps_pin_mode;
 	a->m_config->start_pt            = (NF_Point2){ PS_NF_PIN_START_X, a->m_y_pin_try };
 	a->m_config->pin_end             = PS_NF_MAG_PIN_END;
 	a->m_config->end_pt              = (NF_Point2){ PS_NF_MAG_END_X, PS_NF_MAG_END_Y };
@@ -1259,8 +1302,8 @@ static void calc (CALCC a)
 	a->m_config->pin_end_flat2       = a->m_fold_prev;        
 	a->m_config->x_weight_x0         = PS_NF_XWEIGHT_X0;
 	a->m_config->x_weight_min        = PS_NF_XWEIGHT_MIN;
-	a->m_config->outlier_iters       = PS_NF_OUTLIER_ITERS;
-	a->m_config->outlier_sigma       = PS_NF_OUTLIER_SIGMA;
+	a->m_config->outlier_iters       = (a->ps_outlier_sigma > 0.0) ? PS_NF_OUTLIER_ITERS : 0;
+	a->m_config->outlier_sigma       = (a->ps_outlier_sigma > 0.0) ? a->ps_outlier_sigma : PS_NF_OUTLIER_SIGMA;
 	a->m_config->outlier_min_fraction= PS_NF_OUTLIER_MIN_FRAC;
 	a->m_config->cv_fraction         = PS_NF_CV_FRACTION;
 	a->m_config->cv_overfit_ratio    = PS_NF_CV_OVERFIT_RATIO;
@@ -1316,7 +1359,7 @@ static void calc (CALCC a)
 				eff_alpha = EXTP0_PIN_WARMUP_ALPHA;
 			else
 				eff_alpha = (pin_res.confidence == EXTRAP_CONFIDENT)
-					? EXTP0_PIN_ALPHA : EXTP0_PIN_ALPHA * 0.5;
+					? a->ps_pin_alpha : a->ps_pin_alpha * 0.5;
 			a->c_y_pin_try = eff_alpha * y_pin_raw
 				+ (1.0 - eff_alpha) * a->c_y_pin_ema;
 			if (a->c_pin_cycle <= EXTP0_PIN_WARMUP_CYCLES) a->c_pin_cycle++;
@@ -1332,13 +1375,13 @@ static void calc (CALCC a)
 	a->c_config->pre_filter_x_min    = PS_NF_PHS_PREFILT_XMIN;
 	a->c_config->pre_filter_y_max    = PS_NF_PHS_PREFILT_YMAX;
 	a->c_config->uniform_knots       = PS_NF_UNIFORM_KNOTS;
-	a->c_config->pin_start           = PS_NF_PIN_START;
+	a->c_config->pin_start           = a->ps_pin_mode;
 	a->c_config->start_pt            = (NF_Point2){ PS_NF_PIN_START_X, a->c_y_pin_try };
 	a->c_config->pin_end             = PS_NF_PHS_PIN_END;
 	a->c_config->x_weight_x0         = PS_NF_XWEIGHT_X0;
 	a->c_config->x_weight_min        = PS_NF_XWEIGHT_MIN;
-	a->c_config->outlier_iters       = PS_NF_OUTLIER_ITERS;
-	a->c_config->outlier_sigma       = PS_NF_OUTLIER_SIGMA;
+	a->c_config->outlier_iters       = (a->ps_outlier_sigma > 0.0) ? PS_NF_OUTLIER_ITERS : 0;
+	a->c_config->outlier_sigma       = (a->ps_outlier_sigma > 0.0) ? a->ps_outlier_sigma : PS_NF_OUTLIER_SIGMA;
 	a->c_config->outlier_min_fraction= PS_NF_OUTLIER_MIN_FRAC;
 	a->c_config->cv_fraction         = PS_NF_CV_FRACTION;
 	a->c_config->cv_overfit_ratio    = PS_NF_CV_OVERFIT_RATIO;
@@ -1394,7 +1437,7 @@ static void calc (CALCC a)
 				eff_alpha = EXTP0_PIN_WARMUP_ALPHA;
 			else
 				eff_alpha = (pin_res.confidence == EXTRAP_CONFIDENT)
-					? EXTP0_PIN_ALPHA : EXTP0_PIN_ALPHA * 0.5;
+					? a->ps_pin_alpha : a->ps_pin_alpha * 0.5;
 			a->s_y_pin_try = eff_alpha * y_pin_raw
 				+ (1.0 - eff_alpha) * a->s_y_pin_ema;
 			if (a->s_pin_cycle <= EXTP0_PIN_WARMUP_CYCLES) a->s_pin_cycle++;
@@ -1410,13 +1453,13 @@ static void calc (CALCC a)
 	a->s_config->pre_filter_x_min    = PS_NF_PHS_PREFILT_XMIN;
 	a->s_config->pre_filter_y_max    = PS_NF_PHS_PREFILT_YMAX;
 	a->s_config->uniform_knots       = PS_NF_UNIFORM_KNOTS;
-	a->s_config->pin_start           = PS_NF_PIN_START;
+	a->s_config->pin_start           = a->ps_pin_mode;
 	a->s_config->start_pt            = (NF_Point2){ PS_NF_PIN_START_X, a->s_y_pin_try };
 	a->s_config->pin_end             = PS_NF_PHS_PIN_END;
 	a->s_config->x_weight_x0         = PS_NF_XWEIGHT_X0;
 	a->s_config->x_weight_min        = PS_NF_XWEIGHT_MIN;
-	a->s_config->outlier_iters       = PS_NF_OUTLIER_ITERS;
-	a->s_config->outlier_sigma       = PS_NF_OUTLIER_SIGMA;
+	a->s_config->outlier_iters       = (a->ps_outlier_sigma > 0.0) ? PS_NF_OUTLIER_ITERS : 0;
+	a->s_config->outlier_sigma       = (a->ps_outlier_sigma > 0.0) ? a->ps_outlier_sigma : PS_NF_OUTLIER_SIGMA;
 	a->s_config->outlier_min_fraction= PS_NF_OUTLIER_MIN_FRAC;
 	a->s_config->cv_fraction         = PS_NF_CV_FRACTION;
 	a->s_config->cv_overfit_ratio    = PS_NF_CV_OVERFIT_RATIO;
@@ -1894,6 +1937,11 @@ void pscc (int channel, int size, double* tx, double* rx)
 				InterlockedExchange (&a->ctrl.current_state, LRESET);
 				if (!a->ctrl.calcinprogress)
 				{
+					if (a->ps_collection_dirty)
+					{
+						configure_collection(a->ps_colct, a->ps_pending_nbucks, a->ps_pending_spi);
+						a->ps_collection_dirty = 0;
+					}
 					ns_free(a->m_spline); a->m_spline = NULL;
 					ns_free(a->c_spline); a->c_spline = NULL;
 					ns_free(a->s_spline); a->s_spline = NULL;
@@ -1902,9 +1950,9 @@ void pscc (int channel, int size, double* tx, double* rx)
 					nf_curve_free(a->s_nurb); a->s_nurb = NULL;
 				}
 				a->m_prev_y = 1.0; a->c_prev_y = 1.0; a->s_prev_y = 0.0;
-				curve_ema_init2(&a->m_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND,  0.1, 2.0);
-				curve_ema_init2(&a->c_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND, -1.1, 1.1);
-				curve_ema_init2(&a->s_calavg, PS_NS_EMA_ALPHA, PS_NS_EMA_ALPHA_LO, PS_NS_EMA_X_BND, -1.1, 1.1);
+				curve_ema_init2(&a->m_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND,  0.1, 2.0);
+				curve_ema_init2(&a->c_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND, -1.1, 1.1);
+				curve_ema_init2(&a->s_calavg, a->ps_stbl ? a->ps_ema_alpha : 1.0, a->ps_stbl ? a->ps_ema_alpha : 1.0, PS_NS_EMA_X_BND, -1.1, 1.1);
 				a->m_fold_prev      = 0;
 				a->m_ctrl_ema_valid = 0;
 				a->c_ctrl_ema_valid = 0;
@@ -1983,7 +2031,7 @@ void pscc (int channel, int size, double* tx, double* rx)
 				else if (full)
 					a->ctrl.state = MOXCHECK;
 				else if (top_bucket_useful_frac(&a->m_calavg,
-					a->ps_colct->bbtm[SAMPLE_NBUCKS - 1]) < DEADLOCK_MIN_FRAC)
+					a->ps_colct->bbtm[a->ps_colct->nbucks - 1]) < DEADLOCK_MIN_FRAC)
 				{
 					a->ctrl.state = LRESET;
 					a->info[6] |= 2;
@@ -2024,7 +2072,7 @@ void pscc (int channel, int size, double* tx, double* rx)
 					else if (a->scOK)
 					{
 						if (top_bucket_useful_frac(&a->m_calavg,
-							a->ps_colct->bbtm[SAMPLE_NBUCKS - 1]) < DEADLOCK_MIN_FRAC)
+							a->ps_colct->bbtm[a->ps_colct->nbucks - 1]) < DEADLOCK_MIN_FRAC)
 						{
 							a->ctrl.state = LRESET;
 							a->info[6] |= 2;
@@ -2302,6 +2350,131 @@ void SetPSFeedbackRate (int channel, int rate)
 	LeaveCriticalSection (&txa[channel].calcc.cs_update);
 }
 
+
+static void apply_ps_ema_runtime(CALCC a)
+{
+	double alpha = a->ps_stbl ? a->ps_ema_alpha : 1.0;
+	a->m_calavg.alpha = alpha;
+	a->m_calavg.alpha_lo = alpha;
+	a->c_calavg.alpha = alpha;
+	a->c_calavg.alpha_lo = alpha;
+	a->s_calavg.alpha = alpha;
+	a->s_calavg.alpha_lo = alpha;
+}
+
+PORT
+void SetPSStabilize (int channel, int stbl)
+{
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	CALCC a = txa[channel].calcc.p;
+	a->ps_stbl = stbl ? 1 : 0;
+	apply_ps_ema_runtime(a);
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSEMAAlpha (int channel, double alpha)
+{
+	if (alpha < 0.0) alpha = 0.0;
+	if (alpha > 2.0) alpha = 2.0;
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	CALCC a = txa[channel].calcc.p;
+	a->ps_ema_alpha = alpha;
+	apply_ps_ema_runtime(a);
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSPinAlpha (int channel, double alpha)
+{
+	if (alpha < 0.0) alpha = 0.0;
+	if (alpha > 2.0) alpha = 2.0;
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_pin_alpha = alpha;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSPinMode (int channel, int pin)
+{
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_pin_mode = pin ? 1 : 0;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSEQEnable (int channel, int enable)
+{
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_eq_enable = enable ? 1 : 0;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSOutlierSigma (int channel, double sigma)
+{
+	if (sigma < 0.0) sigma = 0.0;
+	if (sigma > 5.0) sigma = 5.0;
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_outlier_sigma = sigma;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSDCBEnable (int channel, int enable)
+{
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_dcb_enable = enable ? 1 : 0;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSDCBCap (int channel, double cap)
+{
+	if (cap < 0.0) cap = 0.0;
+	if (cap > 1.0) cap = 1.0;
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	txa[channel].calcc.p->ps_dcb_cap = cap;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void SetPSIntsAndSpi (int channel, int ints, int spi)
+{
+	if (!valid_collection_layout(ints, spi)) return;
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	CALCC a = txa[channel].calcc.p;
+	if (a->ps_pending_nbucks != ints || a->ps_pending_spi != spi)
+	{
+		a->ps_pending_nbucks = ints;
+		a->ps_pending_spi = spi;
+		a->ps_collection_dirty = 1;
+		a->ctrl.reset = 1;
+	}
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
+PORT
+void ResetPSAdvancedParams (int channel)
+{
+	EnterCriticalSection (&txa[channel].calcc.cs_update);
+	CALCC a = txa[channel].calcc.p;
+	a->ps_stbl = 1;
+	a->ps_ema_alpha = PS_NS_EMA_ALPHA;
+	a->ps_pin_alpha = EXTP0_PIN_ALPHA;
+	a->ps_pin_mode = PS_NF_PIN_START;
+	a->ps_eq_enable = EQ_ENABLE;
+	a->ps_dcb_enable = DCB_ENABLED;
+	a->ps_dcb_cap = DCB_CAP;
+	a->ps_outlier_sigma = PS_NF_OUTLIER_SIGMA;
+	a->ps_pending_nbucks = 16;
+	a->ps_pending_spi = 256;
+	a->ps_collection_dirty = 1;
+	apply_ps_ema_runtime(a);
+	a->ctrl.reset = 1;
+	LeaveCriticalSection (&txa[channel].calcc.cs_update);
+}
+
 void print_FitResult_and_Data(CALCC a, char* type, int printWhat)
 {
 	int rtype = 0;
@@ -2479,7 +2652,7 @@ void print_OriginalAndFitSamples (CALCC a)
 		fprintf(f, "rx_scale = %12.4e\n", a->rx_scale);
 		fprintf(f, "\n buck      env_tx          env_rx                 ");
 		fprintf(f, "x              ym             yc            ys\n");
-		for (int i = 0, k = 0; i < SAMPLE_NBUCKS; i++)
+		for (int i = 0, k = 0; i < a->ps_colct->nbucks; i++)
 		{
 			for (int j = 0; j < a->ps_colct->tpb[i]; j++)
 			{

@@ -38,6 +38,18 @@ extern void flush_calcc (CALCC a);
 
 extern __declspec(dllexport) void pscc (int channel, int size, double* tx, double* rx);
 
+extern __declspec(dllexport) void SetPSStabilize(int channel, int stbl);
+extern __declspec(dllexport) void SetPSEMAAlpha(int channel, double alpha);
+extern __declspec(dllexport) void SetPSPinAlpha(int channel, double alpha);
+extern __declspec(dllexport) void SetPSPinMode(int channel, int pin);
+extern __declspec(dllexport) void SetPSIntsAndSpi(int channel, int ints, int spi);
+extern __declspec(dllexport) void SetPSDCBEnable(int channel, int enable);
+extern __declspec(dllexport) void SetPSDCBCap(int channel, double cap);
+extern __declspec(dllexport) void SetPSEQEnable(int channel, int enable);
+extern __declspec(dllexport) void SetPSOutlierSigma(int channel, double sigma);
+extern __declspec(dllexport) void ResetPSAdvancedParams(int channel);
+
+
 #endif
 
 // 'info' assignments:

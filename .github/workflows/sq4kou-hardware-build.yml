@@ -30,21 +30,21 @@ jobs:
       - name: Build
         run: msbuild "Project Files/Source/Thetis_VS2026.sln" -p:Configuration=Release -p:Platform=x64 -m -nologo
 
-      - name: Audit legacy PS2 calls
+      - name: Audit unsupported PureSignal calls
         shell: pwsh
         run: |
-          $legacy = 'SetPSPtol|SetPSMapMode|SetPSStabilize|SetPSIntsAndSpi|SetPSEMAAlpha|SetPSPinAlpha|SetPSPinMode|SetPSEQEnable|SetPSOutlierSigma|SetPSDCBEnable|SetPSDCBCap|ResetPSAdvancedParams'
-          $legacyRefs = @()
+          $unsupported = 'SetPSPtol|SetPSMapMode'
+          $refs = @()
           Get-ChildItem "Project Files/Source/Console" -Recurse -Filter *.cs | ForEach-Object {
-            Select-String -Path $_.FullName -Pattern $legacy | ForEach-Object {
-              $legacyRefs += ("PS2REF {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim())
+            Select-String -Path $_.FullName -Pattern $unsupported | ForEach-Object {
+              $refs += ("UNSUPPORTED {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim())
             }
           }
-          if ($legacyRefs.Count -gt 0) {
-            $legacyRefs | ForEach-Object { Write-Host $_ }
-            throw "Legacy PureSignal 2 calls remain in managed code"
+          if ($refs.Count -gt 0) {
+            $refs | ForEach-Object { Write-Host $_ }
+            throw "Unsupported legacy PureSignal calls remain in managed code"
           }
-          Write-Host "Legacy PureSignal 2 call audit PASS"
+          Write-Host "PureSignal unsupported-call audit PASS"
 
       - name: Verify WDSP 2.10 ABI
         shell: pwsh
@@ -78,7 +78,17 @@ jobs:
             "GetPSInfo",
             "SetPSControl",
             "SetPSFeedbackRate",
-            "SetPSHWPeak"
+            "SetPSHWPeak",
+            "SetPSStabilize",
+            "SetPSEMAAlpha",
+            "SetPSPinAlpha",
+            "SetPSPinMode",
+            "SetPSIntsAndSpi",
+            "SetPSDCBEnable",
+            "SetPSDCBCap",
+            "SetPSEQEnable",
+            "SetPSOutlierSigma",
+            "ResetPSAdvancedParams"
           )) {
             if (-not ($exports | Select-String -SimpleMatch $name)) {
               throw "Missing WDSP export: $name"
