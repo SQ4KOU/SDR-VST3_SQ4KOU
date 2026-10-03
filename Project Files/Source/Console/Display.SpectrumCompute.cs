@@ -66,6 +66,14 @@ namespace Thetis
         private static Format _wfNativeOutputFormat = Format.Unknown;
         private static int _wfNativeOutputWidth;
 
+        // Per-RX temporal state for the native row shader. Keeping this state
+        // separate prevents RX1/RX2 history from contaminating each other.
+        private static readonly ID3D11Texture2D[] _wfNativePrevTex = new ID3D11Texture2D[2];
+        private static readonly ID3D11UnorderedAccessView[] _wfNativePrevUAV = new ID3D11UnorderedAccessView[2];
+        private static readonly int[] _wfNativePrevWidth = new int[2];
+        private static readonly bool[] _wfNativeTemporalResetPending = new bool[2] { true, true };
+        private static readonly uint[] _wfNativeDitherRow = new uint[2];
+
         private struct PendingNativeWaterfallRow
         {
             public bool Valid;
@@ -311,16 +319,67 @@ namespace Thetis
                 float CB_High;
                 float CB_LinLogCor;
                 uint  CB_Scheme;
+
                 uint  CB_SourceWidth;
                 uint  CB_OutputWidth;
                 uint  CB_Decimation;
-                uint  CB_Pad;
+                uint  CB_ToneMapMode;
+
+                float CB_Gamma;
+                float CB_InvGamma;
+                float CB_TemporalAlpha;
+                float CB_MotionThreshold;
+
+                float CB_SaturationBoost;
+                float CB_ContrastBoost;
+                float CB_PaletteSharpness;
+                float CB_PaletteContrast;
+
+                uint  CB_DitherEnabled;
+                uint  CB_DitherLevels;
+                uint  CB_RowY;
+                uint  CB_IsLinearOutput;
+
+                float CB_Pad0;
+                float CB_Pad1;
+                float CB_Pad2;
+                float CB_Pad3;
             };
 
             Texture2D<float4> WfLut : register(t0);
             SamplerState WfLutSamp : register(s0);
             Texture2D<float> Input : register(t1);
             RWTexture2D<float4> Output : register(u0);
+            RWTexture2D<float> PrevPct : register(u1);
+
+            float3 ToneMap(float3 c)
+            {
+                if (CB_ToneMapMode == 1)
+                    return c / (1.0 + c);
+                if (CB_ToneMapMode == 2)
+                {
+                    float3 a = c * (2.51 * c + 0.03);
+                    float3 b = c * (2.43 * c + 0.59) + 0.14;
+                    return saturate(a / b);
+                }
+                return c;
+            }
+
+            float3 SrgbToLinear3(float3 c)
+            {
+                float3 lo = c / 12.92;
+                float3 hi = pow((c + 0.055) / 1.055, 2.4);
+                return lerp(lo, hi, step(0.04045, c));
+            }
+
+            float HashDither(uint x, uint y)
+            {
+                uint h = x * 1664525u + y * 1013904223u + 374761393u;
+                h ^= h >> 13;
+                h *= 1274126177u;
+                h ^= h >> 16;
+                return ((h & 1023u) / 1023.0) - 0.5;
+            }
 
             [numthreads(64, 1, 1)]
             void cs_native(uint3 tid : SV_DispatchThreadID)
@@ -341,9 +400,56 @@ namespace Thetis
                     t = (dBm - CB_Low + CB_LinLogCor) / max(CB_High - CB_Low, 0.001);
 
                 t = saturate(t);
+
+                // Reference WaterfallRow parameters: palette contrast operates
+                // around the midpoint, palette sharpness blends toward smoothstep.
+                if (CB_PaletteContrast > 0.0)
+                    t = saturate(0.5 + (t - 0.5) * (1.0 + CB_PaletteContrast));
+
+                if (CB_PaletteSharpness > 0.0)
+                {
+                    float s1 = t * t * (3.0 - 2.0 * t);
+                    t = lerp(t, s1, min(CB_PaletteSharpness, 1.0));
+                    if (CB_PaletteSharpness > 1.0)
+                    {
+                        float s2 = t * t * (3.0 - 2.0 * t);
+                        t = lerp(t, s2, min(CB_PaletteSharpness - 1.0, 1.0));
+                    }
+                }
+
+                // Temporal smoothing is per RX and stored entirely on the GPU.
+                float prev = PrevPct[int2(x, 0)];
+                if (CB_TemporalAlpha > 0.0 && abs(t - prev) <= CB_MotionThreshold)
+                    t = lerp(t, prev, saturate(CB_TemporalAlpha));
+                PrevPct[int2(x, 0)] = t;
+
                 float u = (t * 1023.0 + 0.5) / 1024.0;
-                float4 col = WfLut.SampleLevel(WfLutSamp, float2(u, 0.5), 0);
-                Output[int2(x, 0)] = float4(col.rgb, 1.0);
+                float3 col = WfLut.SampleLevel(WfLutSamp, float2(u, 0.5), 0).rgb;
+
+                // Quality controls from WaterfallEnhancer.
+                if (CB_SaturationBoost > 0.0)
+                {
+                    float luma = dot(col, float3(0.299, 0.587, 0.114));
+                    col = saturate(lerp(float3(luma,luma,luma), col, 1.0 + CB_SaturationBoost));
+                }
+                if (CB_ContrastBoost > 0.0)
+                    col = saturate(0.5 + (col - 0.5) * (1.0 + CB_ContrastBoost));
+
+                // Gamma and tone map are active renderer controls, not UI-only state.
+                if (abs(CB_Gamma - 1.0) > 0.0001)
+                    col = pow(saturate(col), max(CB_Gamma, 0.05));
+                col = ToneMap(col);
+
+                if (CB_DitherEnabled != 0 && CB_DitherLevels > 1)
+                {
+                    float amp = 1.0 / (CB_DitherLevels - 1.0);
+                    col = saturate(col + HashDither(x, CB_RowY) * amp);
+                }
+
+                if (CB_IsLinearOutput != 0)
+                    col = SrgbToLinear3(saturate(col));
+
+                Output[int2(x, 0)] = float4(saturate(col), 1.0);
             }
             ";
 
@@ -398,6 +504,14 @@ namespace Thetis
             _wfNativeOutputTex?.Dispose(); _wfNativeOutputTex = null;
             _wfNativeOutputFormat = Format.Unknown;
             _wfNativeOutputWidth = 0;
+            for (int i = 0; i < 2; i++)
+            {
+                _wfNativePrevUAV[i]?.Dispose(); _wfNativePrevUAV[i] = null;
+                _wfNativePrevTex[i]?.Dispose(); _wfNativePrevTex[i] = null;
+                _wfNativePrevWidth[i] = 0;
+                _wfNativeTemporalResetPending[i] = true;
+                _wfNativeDitherRow[i] = 0;
+            }
             for (int i = 0; i < _pendingNativeWaterfall.Length; i++)
                 _pendingNativeWaterfall[i].Valid = false;
             _wfComputeShadersBuilt = false;
@@ -488,7 +602,7 @@ namespace Thetis
                     Vortice.D3DCompiler.EffectFlags.None).ToArray();
                 _wfNativeCS = device.CreateComputeShader(csBytes);
                 _wfNativeCB = device.CreateBuffer(new BufferDescription(
-                    32, BindFlags.ConstantBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write));
+                    96, BindFlags.ConstantBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write));
                 return true;
             }
             catch (Exception e)
@@ -537,6 +651,57 @@ namespace Thetis
                 _wfNativeOutputTex?.Dispose(); _wfNativeOutputTex = null;
                 return false;
             }
+        }
+
+        private static bool EnsureNativeWaterfallPrev(ID3D11Device device, int slot, int width)
+        {
+            if ((uint)slot > 1u || width <= 0) return false;
+            if (_wfNativePrevTex[slot] != null && _wfNativePrevUAV[slot] != null &&
+                _wfNativePrevWidth[slot] == width)
+                return true;
+
+            _wfNativePrevUAV[slot]?.Dispose(); _wfNativePrevUAV[slot] = null;
+            _wfNativePrevTex[slot]?.Dispose(); _wfNativePrevTex[slot] = null;
+            _wfNativePrevWidth[slot] = 0;
+
+            try
+            {
+                _wfNativePrevTex[slot] = device.CreateTexture2D(new Texture2DDescription
+                {
+                    Width = (uint)width,
+                    Height = 1,
+                    MipLevels = 1,
+                    ArraySize = 1,
+                    Format = Format.R32_Float,
+                    SampleDescription = new SampleDescription(1, 0),
+                    Usage = ResourceUsage.Default,
+                    BindFlags = BindFlags.UnorderedAccess,
+                });
+                _wfNativePrevUAV[slot] = device.CreateUnorderedAccessView(_wfNativePrevTex[slot]);
+                _wfNativePrevWidth[slot] = width;
+                _wfNativeTemporalResetPending[slot] = true;
+                return true;
+            }
+            catch (Exception e)
+            {
+                GPUWaterfallLogger.Log("WF-NATIVE-FAIL", "temporal buffer failed: " + e);
+                _wfNativePrevUAV[slot]?.Dispose(); _wfNativePrevUAV[slot] = null;
+                _wfNativePrevTex[slot]?.Dispose(); _wfNativePrevTex[slot] = null;
+                return false;
+            }
+        }
+
+        internal static void ResetNativeWaterfallTemporalState()
+        {
+            _wfNativeTemporalResetPending[0] = true;
+            _wfNativeTemporalResetPending[1] = true;
+            _wfNativeDitherRow[0] = 0;
+            _wfNativeDitherRow[1] = 0;
+        }
+
+        internal static void InvalidateNativeWaterfallPalette()
+        {
+            _wfComputeLutVersion = -1;
         }
 
         private static bool EnsureWaterfallComputeBuffers(ID3D11Device device, int count)
@@ -909,10 +1074,31 @@ namespace Thetis
             public float High;
             public float LinLogCor;
             public uint Scheme;
+
             public uint SourceWidth;
             public uint OutputWidth;
             public uint Decimation;
-            public uint Pad;
+            public uint ToneMapMode;
+
+            public float Gamma;
+            public float InvGamma;
+            public float TemporalAlpha;
+            public float MotionThreshold;
+
+            public float SaturationBoost;
+            public float ContrastBoost;
+            public float PaletteSharpness;
+            public float PaletteContrast;
+
+            public uint DitherEnabled;
+            public uint DitherLevels;
+            public uint RowY;
+            public uint IsLinearOutput;
+
+            public float Pad0;
+            public float Pad1;
+            public float Pad2;
+            public float Pad3;
         }
 
         /// <summary>
@@ -954,7 +1140,15 @@ namespace Thetis
                 if (!EnsureWaterfallComputeBuffers(_device, nDecimatedWidth)) return false;
                 if (!EnsureNativeWaterfallOutput(_device, W, format)) return false;
 
+                int slot = rx == 2 ? 1 : 0;
+                if (!EnsureNativeWaterfallPrev(_device, slot, W)) return false;
+
                 ID3D11DeviceContext dc = _device.ImmediateContext;
+                if (_wfNativeTemporalResetPending[slot])
+                {
+                    dc.ClearUnorderedAccessView(_wfNativePrevUAV[slot], new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f));
+                    _wfNativeTemporalResetPending[slot] = false;
+                }
 
                 int lutHash = ((int)scheme * 73856093) ^
                     lowThreshold.GetHashCode() ^ highThreshold.GetHashCode() ^
@@ -1001,7 +1195,23 @@ namespace Thetis
                     SourceWidth = (uint)nDecimatedWidth,
                     OutputWidth = (uint)W,
                     Decimation = (uint)Math.Max(1, decimation),
-                    Pad = 0,
+                    ToneMapMode = (uint)WaterfallEnhancer.ToneMap,
+                    Gamma = WaterfallEnhancer.Gamma,
+                    InvGamma = WaterfallEnhancer.Gamma != 0f ? 1f / WaterfallEnhancer.Gamma : 1f,
+                    TemporalAlpha = _temporalEnabled ? _temporalAlpha : 0f,
+                    MotionThreshold = 0.05f,
+                    SaturationBoost = WaterfallEnhancer.SaturationBoost,
+                    ContrastBoost = WaterfallEnhancer.ContrastBoost,
+                    PaletteSharpness = WaterfallEnhancer.PaletteSharpness,
+                    PaletteContrast = WaterfallEnhancer.PaletteContrast,
+                    DitherEnabled = WaterfallEnhancer.DitherEnabled ? 1u : 0u,
+                    DitherLevels = (uint)Math.Max(2, WaterfallEnhancer.Levels),
+                    RowY = _wfNativeDitherRow[slot]++,
+                    IsLinearOutput = format == Format.R16G16B16A16_Float ? 1u : 0u,
+                    Pad0 = 0f,
+                    Pad1 = 0f,
+                    Pad2 = 0f,
+                    Pad3 = 0f,
                 };
                 MappedSubresource cm = dc.Map((ID3D11Resource)_wfNativeCB, 0,
                     MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
@@ -1011,14 +1221,17 @@ namespace Thetis
                 dc.CSSetShader(_wfNativeCS);
                 dc.CSSetConstantBuffer(0, _wfNativeCB);
                 dc.CSSetShaderResources(0, new[] { _wfComputeLutSRV, _wfComputeInputSRV });
-                dc.CSSetUnorderedAccessViews(0, new[] { _wfNativeOutputUAV }, new[] { 0u });
+                dc.CSSetUnorderedAccessViews(0,
+                    new[] { _wfNativeOutputUAV, _wfNativePrevUAV[slot] },
+                    new[] { 0u, 0u });
                 dc.CSSetSamplers(0, new[] { _wfComputeLutSamp });
                 dc.Dispatch((uint)((W + ComputeGroupSize - 1) / ComputeGroupSize), 1, 1);
 
                 // Unbind before the direct texture copy into the history ring.
                 dc.CSSetShader(null);
                 dc.CSSetUnorderedAccessViews(0,
-                    new[] { (ID3D11UnorderedAccessView)null }, new[] { 0u });
+                    new[] { (ID3D11UnorderedAccessView)null, (ID3D11UnorderedAccessView)null },
+                    new[] { 0u, 0u });
                 dc.CSSetShaderResources(0,
                     new[] { (ID3D11ShaderResourceView)null, (ID3D11ShaderResourceView)null });
 

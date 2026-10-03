@@ -62,6 +62,7 @@ namespace Thetis
         private void PersistWaterfallPaletteSettings()
         {
             if (initializing || _gpuWaterfallUiLoading) return;
+            Display.InvalidateNativeWaterfallPalette();
 
             try
             {

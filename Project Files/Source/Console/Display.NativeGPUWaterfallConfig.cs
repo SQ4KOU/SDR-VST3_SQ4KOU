@@ -94,7 +94,13 @@ namespace Thetis
                 WaterfallEnhancer.SetPaletteContrast(F("PaletteContrast", WaterfallEnhancer.PaletteContrast));
                 WaterfallEnhancer.SetGamma(F("Gamma", WaterfallEnhancer.Gamma));
                 WaterfallEnhancer.SetDither(B("Dither", WaterfallEnhancer.DitherEnabled));
-                WaterfallEnhancer.SetQuality((WaterfallEnhancer.QualityLevel)I("QualityLevel", (int)WaterfallEnhancer.Quality));
+                // RenderQuality is the authoritative persisted quality selection.
+                WaterfallEnhancer.SetQuality(_waterfallRenderQuality switch
+                {
+                    WaterfallRenderQuality.Low => WaterfallEnhancer.QualityLevel.Classic,
+                    WaterfallRenderQuality.Medium => WaterfallEnhancer.QualityLevel.Sharp,
+                    _ => WaterfallEnhancer.QualityLevel.Ultra,
+                });
 
                 if (console != null)
                 {
@@ -248,7 +254,20 @@ namespace Thetis
         }
         public static GPUWaterfallResamplingMode GPUWaterfallResamplingMode { get => _gpuWaterfallResamplingMode; set => _gpuWaterfallResamplingMode = value; }
 
-        public static WaterfallRenderQuality WaterfallQuality { get => _waterfallRenderQuality; set => _waterfallRenderQuality = value; }
+        public static WaterfallRenderQuality WaterfallQuality
+        {
+            get => _waterfallRenderQuality;
+            set
+            {
+                _waterfallRenderQuality = value;
+                WaterfallEnhancer.SetQuality(value switch
+                {
+                    WaterfallRenderQuality.Low => WaterfallEnhancer.QualityLevel.Classic,
+                    WaterfallRenderQuality.Medium => WaterfallEnhancer.QualityLevel.Sharp,
+                    _ => WaterfallEnhancer.QualityLevel.Ultra,
+                });
+            }
+        }
         public static NoiseFloorPro.DetectionMode NFMode { get => _nfMode; set => _nfMode = value; }
         public static float NFLowPct { get => _nfLowPct; set => _nfLowPct = Math.Max(1f, Math.Min(49f, value)); }
         public static float NFHighPct { get => _nfHighPct; set => _nfHighPct = Math.Max(50f, Math.Min(99.9f, value)); }
@@ -271,7 +290,10 @@ namespace Thetis
             GPUDetector.Refresh(!m_bForceCPURendering && m_eRenderPath == DXRenderPath.Hardware && _device != null && _bDX2Setup, GPUName);
         }
 
-        internal static void ResetTemporalWaterfallState() { }
+        internal static void ResetTemporalWaterfallState()
+        {
+            ResetNativeWaterfallTemporalState();
+        }
 
         public static void ApplyWaterfallColorDepth(WaterfallEnhancer.ColorDepth depth)
         {
