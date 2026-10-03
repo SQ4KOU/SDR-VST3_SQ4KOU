@@ -213,12 +213,6 @@
     <ClInclude Include="zetaHat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="rnnr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sbnr.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="apfshadow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -450,12 +444,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="zetaHat.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="rnnr.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sbnr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="apfshadow.c">
