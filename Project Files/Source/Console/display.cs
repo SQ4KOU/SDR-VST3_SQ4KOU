@@ -9018,6 +9018,29 @@ namespace Thetis
                     bool bMeshCommit = false;
 
                     #region colours
+                    // Pal Sharp / Pal Contrast apply to the colour-mapping input
+                    // before the palette switch, so every palette mode sees the
+                    // same transformed 0..1 position.
+                    float[] palette_data = waterfall_data;
+                    if ((WaterfallEnhancer.PaletteSharpness > 0f || WaterfallEnhancer.PaletteContrast > 0f) &&
+                        high_threshold > low_threshold)
+                    {
+                        palette_data = new float[nDecimatedWidth];
+                        float paletteRange = high_threshold - low_threshold;
+                        for (int pi = 0; pi < nDecimatedWidth; pi++)
+                        {
+                            float v = waterfall_data[pi];
+                            if (v <= low_threshold) palette_data[pi] = low_threshold;
+                            else if (v >= high_threshold) palette_data[pi] = high_threshold;
+                            else
+                            {
+                                float p = (v - low_threshold) / paletteRange;
+                                p = WaterfallEnhancer.ApplyPaletteShape(p);
+                                palette_data[pi] = low_threshold + p * paletteRange;
+                            }
+                        }
+                    }
+
                     switch (cScheme)
                     {
                         case ColorScheme.Console:
@@ -9032,11 +9055,10 @@ namespace Thetis
                                     for (int i = 0; i < nDecimatedWidth; i++)
                                     {
                                         float pct;
-                                        if (high_threshold <= low_threshold || waterfall_data[i] <= low_threshold) pct = 0f;
-                                        else if (waterfall_data[i] >= high_threshold) pct = 1f;
-                                        else pct = (waterfall_data[i] - low_threshold) / (high_threshold - low_threshold);
+                                        if (high_threshold <= low_threshold || palette_data[i] <= low_threshold) pct = 0f;
+                                        else if (palette_data[i] >= high_threshold) pct = 1f;
+                                        else pct = (palette_data[i] - low_threshold) / (high_threshold - low_threshold);
 
-                                        pct = WaterfallEnhancer.ApplyPaletteShape(pct);
                     palette.Sample(pct, out float pr, out float pg, out float pb);
                                         int o = (i * m_nDecimation) * pixel_size;
                                         row[o + 0] = (byte)Math.Max(0, Math.Min(255, (int)(pb + 0.5f)));
@@ -9073,13 +9095,13 @@ namespace Thetis
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
                                     int gradLast = cols.Length - 1;
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = cols[0].R;
                                         G = cols[0].G;
                                         B = cols[0].B;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold)
+                                    else if (palette_data[i] >= high_threshold)
                                     {
                                         R = cols[gradLast].R;
                                         G = cols[gradLast].G;
@@ -9088,7 +9110,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold;
+                                        float offset = palette_data[i] - low_threshold;
                                         float overall_percent = offset / range; // value from 0.0 to 1.0 where 1.0 is high and 0.0 is low.
                                         int perc = (int)(overall_percent * gradLast);
                                         if (perc < 0) perc = 0; else if (perc > gradLast) perc = gradLast;
@@ -9121,13 +9143,13 @@ namespace Thetis
                                 // draw new data
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = low_color.R;
                                         G = low_color.G;
                                         B = low_color.B;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold)
+                                    else if (palette_data[i] >= high_threshold)
                                     {
                                         R = 192;
                                         G = 124;
@@ -9136,7 +9158,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold;
+                                        float offset = palette_data[i] - low_threshold;
                                         float overall_percent = offset / range; // value from 0.0 to 1.0 where 1.0 is high and 0.0 is low.
 
                                         if (overall_percent < (float)2 / 9) // background to blue
@@ -9207,13 +9229,13 @@ namespace Thetis
                                 // draw new data
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = 0;
                                         G = 0;
                                         B = 0;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold) // white
+                                    else if (palette_data[i] >= high_threshold) // white
                                     {
                                         R = 240;
                                         G = 240;
@@ -9222,7 +9244,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold;
+                                        float offset = palette_data[i] - low_threshold;
                                         float local_percent = ((100.0f * offset) / range);
 
                                         if (local_percent < 5.0f)
@@ -9289,13 +9311,13 @@ namespace Thetis
                                 // draw new data
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = 0;
                                         G = 0;
                                         B = 0;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold) // white
+                                    else if (palette_data[i] >= high_threshold) // white
                                     {
                                         R = 255;
                                         G = 255;
@@ -9304,7 +9326,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold;
+                                        float offset = palette_data[i] - low_threshold;
                                         float local_percent = ((100.0f * offset) / range);
                                         R = (int)((local_percent / 100) * 255);
                                         G = R;
@@ -9327,13 +9349,13 @@ namespace Thetis
                             {
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = 0;
                                         G = 0;
                                         B = 0;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold)
+                                    else if (palette_data[i] >= high_threshold)
                                     {
                                         R = 252;
                                         G = 252;
@@ -9342,7 +9364,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold + LinLogCor;
+                                        float offset = palette_data[i] - low_threshold + LinLogCor;
                                         float spec_bits = 1024;
                                         float overall_percent = (spec_bits * offset) / range; // value from 0.0 to 1.0 where 1.0 is high and 0.0 is low.
                                         float log_fract = (float)(Math.Log10(spec_bits));
@@ -9539,13 +9561,13 @@ namespace Thetis
                             {
                                 for (int i = 0; i < nDecimatedWidth; i++)   // for each pixel in the new line
                                 {
-                                    if (waterfall_data[i] <= low_threshold)
+                                    if (palette_data[i] <= low_threshold)
                                     {
                                         R = 0;
                                         G = 0;
                                         B = 0;
                                     }
-                                    else if (waterfall_data[i] >= high_threshold)
+                                    else if (palette_data[i] >= high_threshold)
                                     {
                                         R = 252;
                                         G = 252;
@@ -9554,7 +9576,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = high_threshold - low_threshold;
-                                        float offset = waterfall_data[i] - low_threshold + LinCor;
+                                        float offset = palette_data[i] - low_threshold + LinCor;
                                         float overall_percent = (offset) / range; // value from 0.0 to 1.0 where 1.0 is high and 0.0 is low.
 
 
@@ -9747,13 +9769,13 @@ namespace Thetis
                                     display_min_w3sz = min_y_w3sz - 5; //for histogram equilization
                                     display_max_w3sz = max_y; //for histogram equalization
 
-                                    if (waterfall_data[i] <= display_min_w3sz)
+                                    if (palette_data[i] <= display_min_w3sz)
                                     {
                                         R = 0;
                                         G = 0;
                                         B = 0;
                                     }
-                                    else if (waterfall_data[i] >= display_max_w3sz)
+                                    else if (palette_data[i] >= display_max_w3sz)
                                     {
                                         R = 252;
                                         G = 252;
@@ -9762,7 +9784,7 @@ namespace Thetis
                                     else // value is between low and high
                                     {
                                         float range = display_max_w3sz - display_min_w3sz;
-                                        float offset = waterfall_data[i] - display_min_w3sz;
+                                        float offset = palette_data[i] - display_min_w3sz;
                                         float overall_percent = (offset) / range; // value from 0.0 to 1.0 where 1.0 is high and 0.0 is low.
 
 
