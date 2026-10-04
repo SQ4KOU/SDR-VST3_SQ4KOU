@@ -5462,6 +5462,10 @@ namespace Thetis
             general_settings.Add(OtherButtonId.LOCK_B, _console.GetGeneralSetting(m.RX, OtherButtonId.LOCK_B));
 
             general_settings.Add(OtherButtonId.NF, _console.GetGeneralSetting(m.RX, OtherButtonId.NF));
+            // SQ4KOU: 3D is persisted before meters are initialised. Include it in the
+            // initial Other Buttons snapshot so the meter button reflects the saved
+            // state immediately at startup instead of waiting for the first toggle.
+            general_settings.Add(OtherButtonId.PAN_3D, _console.GetGeneralSetting(m.RX, OtherButtonId.PAN_3D));
 
             m.GeneralSettings = new GeneralOtherButtonSettings() { _setting = OtherButtonId.INIT, _old_state = false, _new_state = false, _settings = general_settings };
             //
