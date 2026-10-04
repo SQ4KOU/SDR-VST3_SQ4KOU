@@ -1,4 +1,4 @@
-name: Create SDR-VST3 SQ4KOU TEST release
+name: Release SDR-VST3-GPU SQ4KOU build 238
 
 on:
   push:
@@ -13,29 +13,54 @@ permissions:
 
 jobs:
   release:
-    if: github.event.head_commit.message == 'Create SDR-VST3_SQ4KOU_TEST release from build 232'
+    if: github.event.head_commit.message == 'Release SDR-VST3-GPU_SQ4KOU from build 238'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: SQ4KOU/SDR-VST3_SQ4KOU
     steps:
-      - name: Download exact build 232 artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify and download exact build 238
+        shell: bash
         run: |
           set -euo pipefail
-          curl -L \
+          gh api repos/$GH_REPO/actions/runs/37183622902 > run.json
+          jq -e '.run_number == 238 and .conclusion == "success" and .head_sha == "b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33"' run.json
+          curl --fail --location --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/SQ4KOU/SDR-VST3_SQ4KOU/actions/artifacts/11280504532/zip" \
-            -o "SDR-VST3_SQ4KOU_TEST_build232.zip"
+            "https://api.github.com/repos/$GH_REPO/actions/artifacts/11296515513/zip" \
+            -o build238.zip
+          echo "4960424993ebbec328e56c95286a92aa897e29272191701b6a9d22d723cecff4  build238.zip" | sha256sum --check
+          python3 - <<'PY'
+          import hashlib
+          import zipfile
+          from pathlib import Path
+          with zipfile.ZipFile("build238.zip") as archive:
+              files = [entry for entry in archive.infolist() if not entry.is_dir() and entry.filename.lower().endswith(".msi")]
+              if len(files) != 1:
+                  raise RuntimeError(f"Expected one MSI, found {len(files)}")
+              data = archive.read(files[0])
+          if not data.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+              raise RuntimeError("Invalid MSI compound-file header")
+          Path("SDR-VST3-GPU_SQ4KOU.msi").write_bytes(data)
+          print(f"Original MSI: {files[0].filename}")
+          print(f"MSI SHA256: {hashlib.sha256(data).hexdigest()}")
+          PY
 
-      - name: Create GitHub release from build 232
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish MSI release
+        shell: bash
         run: |
           set -euo pipefail
-          gh release create "SDR-VST3_SQ4KOU_TEST" \
-            --repo "SQ4KOU/SDR-VST3_SQ4KOU" \
-            --target "d5cf53f8b0c0db3905a94cd14bfb223aae7631b5" \
-            --title "SDR-VST3_SQ4KOU_TEST" \
-            --notes "Test release based exactly on SDR-VST3 SQ4KOU Hardware build #232. Includes welded panel positions and Shift+LMB resize/persistence for the Bandscope/Waterfall panel." \
-            "SDR-VST3_SQ4KOU_TEST_build232.zip"
+          cat > release-notes.md <<'EOF'
+          Wydanie z dokładnego buildu #238.
+          
+          Commit: b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33
+          Zawiera poprawkę zachowania napisu SQ4KOU pod paskiem postępu.
+          Załączony MSI pochodzi z artefaktu buildu #238; zmieniono wyłącznie nazwę pliku.
+          EOF
+          gh release create "SDR-VST3-GPU_SQ4KOU" \
+            --target "b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33" \
+            --title "SDR-VST3-GPU_SQ4KOU" \
+            --notes-file release-notes.md \
+            "SDR-VST3-GPU_SQ4KOU.msi"
