@@ -248,6 +248,7 @@ namespace Thetis
         _MACRO_29,
         _MACRO_30,
 
+        TX_PREVIEW = 997,
         INFO_TEXT = 998,
         SPLITTER = 999,
 
@@ -568,6 +569,7 @@ namespace Thetis
             (OtherButtonId.XPA,            0,  8, "xPA", "", "", "Override OC pins with this"),
             (OtherButtonId.REC,            0,  9, "Rec", "stop", "record", "Wave quick record"),
             (OtherButtonId.PLAY,           0, 10, "Play", "stop", "play", "Wave quick playback"),
+            (OtherButtonId.TX_PREVIEW,     0, 11, "TXP", "", "", "TX Preview - monitor the full TX audio/DSP path without PTT or RF output"),
 
             (OtherButtonId.INFO_TEXT,     -1, -1, "Noise / ATT", "", "", ""),
             (OtherButtonId.SPLITTER,      -1, -1, "", "", "", ""),

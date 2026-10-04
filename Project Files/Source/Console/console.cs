@@ -29654,6 +29654,7 @@ namespace Thetis
             }
 
             chkTXPreview.BackColor = active ? button_selected_color : SystemColors.Control;
+            SetGeneralSetting(0, OtherButtonId.TX_PREVIEW, active);
         }
 
         private void stopTXPreview()
@@ -52968,6 +52969,7 @@ namespace Thetis
                 case OtherButtonId.POWER: PowerOn = !PowerOn; break;
                 case OtherButtonId.RX_2: RX2Enabled = !RX2Enabled; break;
                 case OtherButtonId.MON: MON = !MON; break;
+                case OtherButtonId.TX_PREVIEW: chkTXPreview.Checked = !chkTXPreview.Checked; break;
                 case OtherButtonId.TUN: TUN = !TUN; break;
                 case OtherButtonId.MOX: MOX = !MOX; break;
                 case OtherButtonId.TWOTON: TwoTone = !TwoTone; break;
@@ -54424,6 +54426,8 @@ namespace Thetis
                 SetGeneralSetting(n, OtherButtonId.NF, GetGeneralSetting(n, OtherButtonId.NF));
                 SetGeneralSetting(n, OtherButtonId.ACTITVE_PEAK, GetGeneralSetting(tmp_rx, OtherButtonId.ACTITVE_PEAK));
             }
+
+            SetGeneralSetting(0, OtherButtonId.TX_PREVIEW, _tx_preview_active);
 
             // last
             _init_general_setting = false; // send to delegates
