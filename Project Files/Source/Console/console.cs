@@ -30648,6 +30648,7 @@ namespace Thetis
         {
             Display.Pan3DEnabled = btnDisplay3DPan.Checked;
             btnDisplay3DPan.BackColor = btnDisplay3DPan.Checked ? button_selected_color : SystemColors.Control;
+            SetGeneralSetting(0, OtherButtonId.PAN_3D, btnDisplay3DPan.Checked);
 
             // keep the setup checkbox in sync with the toolbar button (guarded so we
             // never lazily create the Setup form just for this; its CheckedChanged
@@ -53032,6 +53033,7 @@ namespace Thetis
                 case OtherButtonId.AVG: SetAVG(rx, !GetAVG(rx)); break;
                 case OtherButtonId.PEAK_HOLD: SetPeak(rx, !GetPeak(rx)); break;
                 case OtherButtonId.CTUN: SetCTUN(rx, !GetCTUN(rx)); break;
+                case OtherButtonId.PAN_3D: btnDisplay3DPan.Checked = !btnDisplay3DPan.Checked; break;
                 case OtherButtonId.VAC1: if (!IsSetupFormNull) { SetupForm.VACEnable = !SetupForm.VACEnable; } break;
                 case OtherButtonId.VAC2: if (!IsSetupFormNull) { SetupForm.VAC2Enable = !SetupForm.VAC2Enable; } break;
                 case OtherButtonId.MUTE: SetMute(rx, !GetMute(rx)); break;
@@ -53320,6 +53322,9 @@ namespace Thetis
                     break;
                 case OtherButtonId.SPOTS:
                     SetupForm.ShowSetupTab(Setup.SetupTab.SpotTCI);
+                    break;
+                case OtherButtonId.PAN_3D:
+                    if (!IsSetupFormNull) SetupForm.Show3DPanadapterSettings();
                     break;
                 case OtherButtonId.INFO_TEXT:
                 case OtherButtonId.PEAK_BLOBS:
@@ -54428,6 +54433,7 @@ namespace Thetis
             }
 
             SetGeneralSetting(0, OtherButtonId.TX_PREVIEW, _tx_preview_active);
+            SetGeneralSetting(0, OtherButtonId.PAN_3D, Display.Pan3DEnabled);
 
             // last
             _init_general_setting = false; // send to delegates
