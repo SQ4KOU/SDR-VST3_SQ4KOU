@@ -766,6 +766,9 @@
     <EmbeddedResource Include="images\softrock40.jpg" />
     <EmbeddedResource Include="images\soundcard.jpg" />
     <EmbeddedResource Include="images\splash.jpg" />
+    <EmbeddedResource Include="images\Splash_SQ4KOU.png">
+      <LogicalName>Thetis.Splash_SQ4KOU.png</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="InputBox.resx">
       <DependentUpon>InputBox.cs</DependentUpon>
       <SubType>Designer</SubType>
