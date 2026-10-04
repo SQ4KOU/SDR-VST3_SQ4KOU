@@ -53645,6 +53645,7 @@ namespace Thetis
                 case OtherButtonId.AVG: return GetAVG(rx);
                 case OtherButtonId.PEAK_HOLD: return GetPeak(rx);
                 case OtherButtonId.CTUN: return GetCTUN(rx);
+                case OtherButtonId.PAN_3D: return Display.Pan3DEnabled;
                 case OtherButtonId.VAC1: if (!IsSetupFormNull) { return SetupForm.VACEnable; } else { return false; }
                 case OtherButtonId.VAC2: if (!IsSetupFormNull) { return SetupForm.VAC2Enable; } else { return false; }
                 case OtherButtonId.MUTE: return GetMute(rx);
