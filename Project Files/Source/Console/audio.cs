@@ -604,8 +604,17 @@ namespace Thetis
             {
                 tx_preview_mon = value;
 
+                // TX Preview is a local-only monitor. While it is active, keep
+                // the normal RX audio out of the local AAudioMix so RX and the
+                // processed TX preview are never heard on top of each other.
+                // The user's RX mute state itself is not changed, so disabling
+                // TX Preview restores the exact RX audio state that was active.
                 unsafe
                 {
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 0, !mute_rx1 && !tx_preview_mon);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 1, !mute_rx1 && !tx_preview_mon);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 2, !mute_rx2 && !tx_preview_mon);
+
                     cmaster.SetAAudioMixVol((void*)0, 0, WDSP.id(1, 0), 0.5);
                     cmaster.SetAAudioMixWhat((void*)0, 0, WDSP.id(1, 0), effectiveLocalMon());
                 }
@@ -1476,8 +1485,8 @@ namespace Thetis
 
                 unsafe
                 {
-                    cmaster.SetAAudioMixWhat((void*)0, 0, 0, !mute_rx1);
-                    cmaster.SetAAudioMixWhat((void*)0, 0, 1, !mute_rx1);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 0, !mute_rx1 && !tx_preview_mon);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 1, !mute_rx1 && !tx_preview_mon);
                 }
             }
         }
@@ -1494,7 +1503,7 @@ namespace Thetis
 
                 unsafe
                 {
-                    cmaster.SetAAudioMixWhat((void*)0, 0, 2, !mute_rx2);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, 2, !mute_rx2 && !tx_preview_mon);
                 }
             }
         }
