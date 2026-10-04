@@ -592,7 +592,7 @@ namespace Thetis
         private void Splash_Load(object sender, EventArgs e)
         {
 			lblStatus.Text = "";
-			lblVersion.Text = _start_params.vers;
+			setVersion(_start_params.vers);
 			lblTimeRemaining.Text = "";
         }		
     }
