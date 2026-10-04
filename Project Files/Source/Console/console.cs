@@ -54382,6 +54382,10 @@ namespace Thetis
                 case OtherButtonId.LOCK_A: return VFOALock;
                 case OtherButtonId.LOCK_B: return VFOBLock;
 
+                // 3D is a global display state, but Meters/Gadgets queries it
+                // through the normal per-RX general-setting snapshot.
+                case OtherButtonId.PAN_3D: return Display.Pan3DEnabled;
+
                 case OtherButtonId.NF: return GetNFEnabled(rx);
             }
             return false;
