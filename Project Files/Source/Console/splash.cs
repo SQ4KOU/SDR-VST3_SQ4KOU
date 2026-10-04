@@ -117,6 +117,18 @@ namespace Thetis
         public Splash()
 		{
             InitializeComponent();
+
+            // SQ4KOU: use the project-embedded 963x309 splash artwork.
+            // Keep the existing runtime scaling/status/progress behavior unchanged.
+            using (Stream splashStream = typeof(Splash).Assembly.GetManifestResourceStream("Thetis.Splash_SQ4KOU.png"))
+            {
+                if (splashStream != null)
+                {
+                    using (Image splashImage = Image.FromStream(splashStream))
+                        this.BackgroundImage = new Bitmap(splashImage);
+                }
+            }
+
 			Common.DoubleBufferAll(this, true);
 			this.Opacity = .00;
 			timer1.Interval = TIMER_INTERVAL;
@@ -335,7 +347,15 @@ namespace Thetis
         // ************ Private methods ************
         private void setVersion(string version)
         {
-			lblVersion.Text = string.IsNullOrEmpty(version) ? "" : version.Left(16);
+            string text = string.IsNullOrEmpty(version) ? "" : version;
+
+            if (!string.IsNullOrEmpty(text) &&
+                !text.EndsWith(" SQ4KOU", StringComparison.OrdinalIgnoreCase))
+            {
+                text += " SQ4KOU";
+            }
+
+			lblVersion.Text = text;
         }
         private void setBackground(string splash_screen_folder)
         {
