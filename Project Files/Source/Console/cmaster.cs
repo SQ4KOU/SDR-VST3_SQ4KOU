@@ -344,6 +344,10 @@ namespace Thetis
         [DllImport("ChannelMaster.dll", EntryPoint = "LoadRouterControlBit", CallingConvention = CallingConvention.Cdecl)]
         public static extern void LoadRouterControlBit(void* ptr, int id, int var_number, int bit);
 
+        // Protocol-1 RF safety gate for local TX Preview.
+        [DllImport("ChannelMaster.dll", EntryPoint = "SetTXPreview", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SetTXPreview(int active);
+
         // display setup
 
         [DllImport("ChannelMaster.dll", EntryPoint = "SetTopPan3Run", CallingConvention = CallingConvention.Cdecl)]

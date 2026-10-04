@@ -30,6 +30,23 @@ int PreviousTXBit = 0;							// used to detect TX/RX change
 unsigned int MetisOutBoundSeqNum;
 PRO prop;
 
+/* SQ4KOU_TX_PREVIEW_P1
+ * Independent RF safety gate for local TX Preview. Frames continue to flow,
+ * but the Protocol-1 TX bit and TX I/Q/key data are suppressed while active.
+ */
+static volatile LONG sq4kou_tx_preview_active = 0;
+
+PORT
+void SetTXPreview(int active)
+{
+    InterlockedExchange(&sq4kou_tx_preview_active, active ? 1 : 0);
+}
+
+static int TXPreviewActive(void)
+{
+    return InterlockedCompareExchange(&sq4kou_tx_preview_active, 0, 0) != 0;
+}
+
 /* SQ4KOU_P1_WB_ASYNC_V1
  * Protocol-1 EP4 receive path must not call WDSP Spectrum().
  * Assemble one complete 16384-sample WideBand frame here and hand it
@@ -527,6 +544,7 @@ void WriteMainLoop(char* bufp)
 	unsigned char CWMode;
 	char* txbptr;
 	int ddc_freq;
+	int tx_output_enabled = XmitBit && !TXPreviewActive();
 	// create 2 USB frames
 	for (txframe = 0; txframe < 2; txframe++)
 	{
@@ -536,17 +554,17 @@ void WriteMainLoop(char* bufp)
 		txbptr[2] = 0x7f;
 
 		// if TX/RX has changed we need to change the DDC0 frequency for Hermes-II; so jump to that C&C next	
-		if (XmitBit != PreviousTXBit)
+		if (tx_output_enabled != PreviousTXBit)
 		{
 			if (nddc == 2)
 				out_control_idx = 2;
-			PreviousTXBit = XmitBit;
+			PreviousTXBit = tx_output_enabled;
 		}
 
 		// add the 5 control bytes: get  inc TX bit
         // "C0=0" used to be sent often, but will rarely be changed
         // so it is now sent at the same rate as everything else
-		C0 = (unsigned char)XmitBit;
+		C0 = (unsigned char)tx_output_enabled;
 
 		switch (out_control_idx)	// now m=pick the frame of control bytes
 		{
@@ -587,7 +605,7 @@ void WriteMainLoop(char* bufp)
 		case 2: //RX1 VFO (DDC0)
 			C0 |= 4;
 			// DDC0 is always RX0 freqency, except if Puresignal TX with hermes-II
-			if ((nddc == 2) && (XmitBit == 1) && (prn->puresignal_run))
+			if ((nddc == 2) && tx_output_enabled && (prn->puresignal_run))
 				ddc_freq = prn->tx[0].frequency;
 			else
 				ddc_freq = prn->rx[0].frequency;
@@ -602,7 +620,7 @@ void WriteMainLoop(char* bufp)
 			// DDC1 is TX freq if Hermes-II && TX && Puresignal; 
 			// RX1 freq if Orion;
 			// else RX2 freq if Hermes
-			if ((nddc == 2) && (XmitBit == 1) && (prn->puresignal_run))
+			if ((nddc == 2) && tx_output_enabled && (prn->puresignal_run))
 				ddc_freq = prn->tx[0].frequency;
 			else if (nddc == 5)
 				ddc_freq = prn->rx[0].frequency;
@@ -706,7 +724,7 @@ void WriteMainLoop(char* bufp)
 
 		case 12: // Step ATT control
 			C0 |= 0x16; //C0 0001 011x
-			if (XmitBit && HPSDRModel != HPSDRModel_REDPITAYA)
+			if (tx_output_enabled && HPSDRModel != HPSDRModel_REDPITAYA)
 				//This is existing code. It used to apply 31dB attenuation to any receiver that is using ADC[1] (adc2 in the setup form) when in a TX state (XmitBit set)
 				//Unsure why this was forced, as it is not for oher adc's, however it has been left 'as is' for all radios other than the Red Pitaya
 				C1 = 0x1F;
@@ -810,6 +828,7 @@ DWORD WINAPI sendProtocol1Samples(LPVOID n)
 	int i, j, k;
 	short temp;
 	double swap;
+	int preview_active;
 	double *pbuffs [2];
 	pbuffs[0] = prn->outLRbufp;
 	pbuffs[1] = prn->outIQbufp;
@@ -817,13 +836,14 @@ DWORD WINAPI sendProtocol1Samples(LPVOID n)
 	while (io_keep_running != 0)
 	{
 		WaitForMultipleObjects(2, prn->hsendEventHandles, TRUE, INFINITE);
+		preview_active = TXPreviewActive();
 		// if ((nddc == 2) || (nddc == 4))
-		if (pcm->xmtr[0].peer->run && XmitBit)
+		if (pcm->xmtr[0].peer->run && XmitBit && !preview_active)
 		{
 			// if eer/etr mode and transmitting, overwrite LR data with EER data
 			memcpy(prn->outLRbufp, prn->outIQbufp + 256, sizeof(complex) * 126);
 		}
-		if (!XmitBit) memset(prn->outIQbufp, 0, sizeof(complex) * 126);
+		if (!XmitBit || preview_active) memset(prn->outIQbufp, 0, sizeof(complex) * 126);
 		// WriteAudio (30.0, 48000, 126, prn->outIQbufp, 3);
 		// WriteAudio (60.0, 48000, 126, prn->outLRbufp, 3);
 		for (i = 0; i < 4 * 63; i += 2)			// swap L & R audio; firmware bug fix
@@ -838,7 +858,7 @@ DWORD WINAPI sendProtocol1Samples(LPVOID n)
 				{
 					temp = pbuffs[j][i * 2 + k] >= 0.0 ? (short)floor(pbuffs[j][i * 2 + k] * 32767.0 + 0.5) :
 						(short)ceil(pbuffs[j][i * 2 + k] * 32767.0 - 0.5);
-					if (prn->cw.cw_enable && j == 1)
+					if (prn->cw.cw_enable && j == 1 && !preview_active)
 						temp = (prn->tx[0].dot << 2 |
 							prn->tx[0].dash << 1 |
 							prn->tx[0].cwx) & 0b00000111;

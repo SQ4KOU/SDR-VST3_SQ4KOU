@@ -568,6 +568,13 @@ namespace Thetis
             }
         }
         private static bool mon;
+        private static bool tx_preview_mon = false;
+
+        private static bool effectiveLocalMon()
+        {
+            return mon || tx_preview_mon;
+        }
+
         public static bool MON
         {
             set
@@ -579,12 +586,29 @@ namespace Thetis
                 unsafe
                 {
                     cmaster.SetAAudioMixVol((void*)0, 0, WDSP.id(1, 0), 0.5);
-                    cmaster.SetAAudioMixWhat((void*)0, 0, WDSP.id(1, 0), value);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, WDSP.id(1, 0), effectiveLocalMon());
                 }
             }
             get
             {
                 return mon;
+            }
+        }
+
+        // Local-only monitor gate used by TX Preview.  It intentionally does
+        // not alter MON, IVAC monitor, or TCI monitor state.
+        public static bool TXPreviewMON
+        {
+            get { return tx_preview_mon; }
+            set
+            {
+                tx_preview_mon = value;
+
+                unsafe
+                {
+                    cmaster.SetAAudioMixVol((void*)0, 0, WDSP.id(1, 0), 0.5);
+                    cmaster.SetAAudioMixWhat((void*)0, 0, WDSP.id(1, 0), effectiveLocalMon());
+                }
             }
         }
 

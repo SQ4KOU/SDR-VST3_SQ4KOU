@@ -1968,6 +1968,24 @@
   <data name="chkMON.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>Off</value>
   </data>
+  <data name="chkTXPreview.Location" type="System.Drawing.Point, System.Drawing">
+    <value>8, 76</value>
+  </data>
+  <data name="chkTXPreview.Size" type="System.Drawing.Size, System.Drawing">
+    <value>50, 23</value>
+  </data>
+  <data name="chkTXPreview.TabIndex" type="System.Int32, mscorlib">
+    <value>84</value>
+  </data>
+  <data name="chkTXPreview.Text" xml:space="preserve">
+    <value>TXP</value>
+  </data>
+  <data name="chkTXPreview.TextAlign" type="System.Drawing.ContentAlignment, System.Drawing">
+    <value>MiddleCenter</value>
+  </data>
+  <data name="chkTXPreview.ToolTip" xml:space="preserve">
+    <value>TX Preview - monitor the full TX audio/DSP path without PTT or RF output.</value>
+  </data>
   <data name="chkMON.Location" type="System.Drawing.Point, System.Drawing">
     <value>8, 7</value>
   </data>

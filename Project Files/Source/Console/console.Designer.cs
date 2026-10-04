@@ -36,6 +36,7 @@
         private System.Windows.Forms.CheckBoxTS chkANF;
         private System.Windows.Forms.CheckBoxTS chkNR;
         private System.Windows.Forms.CheckBoxTS chkMON;
+        private System.Windows.Forms.CheckBoxTS chkTXPreview;
         private System.Windows.Forms.CheckBoxTS chkTUN;
         private System.Windows.Forms.CheckBoxTS chkMOX;
         private System.Windows.Forms.NumericUpDownTS udXIT;
@@ -581,6 +582,7 @@
             this.chkExternalPA = new System.Windows.Forms.CheckBoxTS();
             this.ckQuickPlay = new System.Windows.Forms.CheckBoxTS();
             this.chkMON = new System.Windows.Forms.CheckBoxTS();
+            this.chkTXPreview = new System.Windows.Forms.CheckBoxTS();
             this.ckQuickRec = new System.Windows.Forms.CheckBoxTS();
             this.chkRX2SR = new System.Windows.Forms.CheckBoxTS();
             this.chkMOX = new System.Windows.Forms.CheckBoxTS();
@@ -2035,6 +2037,16 @@
             this.chkMON.Name = "chkMON";
             this.toolTip1.SetToolTip(this.chkMON, resources.GetString("chkMON.ToolTip"));
             this.chkMON.CheckedChanged += new System.EventHandler(this.chkMON_CheckedChanged);
+            // 
+            // chkTXPreview
+            // 
+            resources.ApplyResources(this.chkTXPreview, "chkTXPreview");
+            this.chkTXPreview.Enabled = false;
+            this.chkTXPreview.FlatAppearance.BorderSize = 0;
+            this.chkTXPreview.ForeColor = System.Drawing.SystemColors.ControlLightLight;
+            this.chkTXPreview.Name = "chkTXPreview";
+            this.toolTip1.SetToolTip(this.chkTXPreview, resources.GetString("chkTXPreview.ToolTip"));
+            this.chkTXPreview.CheckedChanged += new System.EventHandler(this.chkTXPreview_CheckedChanged);
             // 
             // ckQuickRec
             // 
@@ -6132,6 +6144,7 @@
             this.panelOptions.Controls.Add(this.chkExternalPA);
             this.panelOptions.Controls.Add(this.ckQuickPlay);
             this.panelOptions.Controls.Add(this.chkMON);
+            this.panelOptions.Controls.Add(this.chkTXPreview);
             this.panelOptions.Controls.Add(this.ckQuickRec);
             this.panelOptions.Controls.Add(this.chkRX2SR);
             this.panelOptions.Controls.Add(this.chkMOX);

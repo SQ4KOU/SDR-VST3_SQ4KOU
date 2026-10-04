@@ -27657,6 +27657,10 @@ namespace Thetis
                     chkPower.Checked = false;
                     return;
                 }
+
+                // TX Preview is implemented with a Protocol-1 output safety gate.
+                chkTXPreview.Enabled = NetworkIO.CurrentRadioProtocol == RadioProtocol.USB;
+
                 if (!IsSetupFormNull) SetupForm.BoardWarning = NetworkIO.BoardMismatch; //[2.10.3.9]MW0LGE show warning in setup if board does not match expected
 
                 //MW0LGE_21k9 these two moved after the audio start
@@ -27840,6 +27844,9 @@ namespace Thetis
             }
             else
             {
+                stopTXPreview();
+                chkTXPreview.Enabled = false;
+
                 DataFlowing = false;
                 SetupForm.TestIMD = false;
 
@@ -29634,6 +29641,66 @@ namespace Thetis
                 ChangeTuneStepUp();
         }
 
+        private bool _tx_preview_active = false;
+        private bool _tx_preview_ui_guard = false;
+
+        private void setTXPreviewUI(bool active)
+        {
+            if (chkTXPreview.Checked != active)
+            {
+                _tx_preview_ui_guard = true;
+                try { chkTXPreview.Checked = active; }
+                finally { _tx_preview_ui_guard = false; }
+            }
+
+            chkTXPreview.BackColor = active ? button_selected_color : SystemColors.Control;
+        }
+
+        private void stopTXPreview()
+        {
+            if (_tx_preview_active)
+            {
+                // Keep the native RF gate armed until the TX DSP channel is stopped.
+                WDSP.SetChannelState(WDSP.id(1, 0), 0, 1);
+                Audio.TXPreviewMON = false;
+                cmaster.SetTXPreview(0);
+                _tx_preview_active = false;
+            }
+
+            setTXPreviewUI(false);
+        }
+
+        private void chkTXPreview_CheckedChanged(object sender, System.EventArgs e)
+        {
+            if (_tx_preview_ui_guard) return;
+
+            if (!chkTXPreview.Checked)
+            {
+                stopTXPreview();
+                return;
+            }
+
+            // Preview is intentionally Protocol-1 only. It never enters MOX,
+            // never asserts PTT, and the native P1 output gate suppresses TX I/Q.
+            if (!PowerOn ||
+                NetworkIO.CurrentRadioProtocol != RadioProtocol.USB ||
+                _mox ||
+                chkTUN.Checked ||
+                chk2TONE.Checked)
+            {
+                setTXPreviewUI(false);
+                return;
+            }
+
+            // Arm RF safety first, then run the full TX audio/DSP chain locally.
+            cmaster.SetTXPreview(1);
+            Audio.TXPreviewMON = true;
+            WDSP.SetChannelState(WDSP.id(1, 0), 1, 0);
+
+            _tx_preview_active = true;
+            setTXPreviewUI(true);
+        }
+
         private void chkMON_CheckedChanged(object sender, System.EventArgs e)
         {
             bool oldMON = Audio.MON;
@@ -29973,6 +30040,9 @@ namespace Thetis
                 chkMOX.CheckedChanged += chkMOX_CheckedChanged2;
                 return;
             }
+
+            if (chkMOX.Checked && _tx_preview_active)
+                stopTXPreview();
 
             // courtesy tone: on tx release, cut any tone streaming from tx start, then play the release tone
             // and hold the transmitter keyed until that release tone has finished.
@@ -30701,6 +30771,9 @@ namespace Thetis
 
             if (chkTUN.Checked)
             {
+                if (_tx_preview_active)
+                    stopTXPreview();
+
                 if (!PowerOn)
                 {
                     MessageBox.Show("Power must be on to turn on the Tune function.",
@@ -46144,6 +46217,9 @@ namespace Thetis
         private async void chk2TONE_CheckedChanged(object sender, EventArgs e)
         {
             if (IsSetupFormNull || SetupForm.TestIMD == chk2TONE.Checked) return; // same state ignore
+
+            if (chk2TONE.Checked && _tx_preview_active)
+                stopTXPreview();
 
             // stop tune if currently running and we want to run 2tone
             if (chk2TONE.Checked && chkTUN.Checked)
