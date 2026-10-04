@@ -1,9 +1,9 @@
-name: Release SDR-VST3-GPU SQ4KOU build 238
+name: Release SDR-VST3-GPU SQ4KOU build 246
 
 on:
   push:
     branches:
-      - feature/sq4kou-hardware
+      - release/build246-publish
     paths:
       - .github/workflows/release-build202.yml
 
@@ -13,37 +13,38 @@ permissions:
 
 jobs:
   release:
-    if: github.event.head_commit.message == 'Release SDR-VST3-GPU_SQ4KOU from build 238'
+    if: github.event.head_commit.message == 'Publish SDR-VST3-GPU_SQ4KOU build 246'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: SQ4KOU/SDR-VST3_SQ4KOU
     steps:
-      - name: Verify and download exact build 238
+      - name: Verify and download exact build 246
         shell: bash
         run: |
           set -euo pipefail
-          gh api repos/$GH_REPO/actions/runs/37183622902 > run.json
-          jq -e '.run_number == 238 and .conclusion == "success" and .head_sha == "b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33"' run.json
+          gh api repos/$GH_REPO/actions/runs/37212985596 > run.json
+          jq -e '.run_number == 246 and .conclusion == "success" and .head_sha == "b629ee09368c99bc2d7c670e002b4101313e05a8"' run.json
+          gh api repos/$GH_REPO/actions/artifacts/11307885249 > artifact.json
+          jq -e '.expired == false and .workflow_run.id == 37212985596 and .workflow_run.head_sha == "b629ee09368c99bc2d7c670e002b4101313e05a8"' artifact.json
           curl --fail --location --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$GH_REPO/actions/artifacts/11296515513/zip" \
-            -o build238.zip
-          echo "4960424993ebbec328e56c95286a92aa897e29272191701b6a9d22d723cecff4  build238.zip" | sha256sum --check
+            "https://api.github.com/repos/$GH_REPO/actions/artifacts/11307885249/zip" \
+            -o build246.zip
           python3 - <<'PY'
           import hashlib
           import zipfile
           from pathlib import Path
-          with zipfile.ZipFile("build238.zip") as archive:
+          with zipfile.ZipFile("build246.zip") as archive:
               files = [entry for entry in archive.infolist() if not entry.is_dir() and entry.filename.lower().endswith(".msi")]
               if len(files) != 1:
                   raise RuntimeError(f"Expected one MSI, found {len(files)}")
               data = archive.read(files[0])
           if not data.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
               raise RuntimeError("Invalid MSI compound-file header")
-          Path("SDR-VST3-GPU_SQ4KOU.msi").write_bytes(data)
+          Path("SDR-VST3-GPU_SQ4KOU-build246.msi").write_bytes(data)
           print(f"Original MSI: {files[0].filename}")
           print(f"MSI SHA256: {hashlib.sha256(data).hexdigest()}")
           PY
@@ -53,14 +54,61 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<'EOF'
-          Wydanie z dokładnego buildu #238.
-          
-          Commit: b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33
-          Zawiera poprawkę zachowania napisu SQ4KOU pod paskiem postępu.
-          Załączony MSI pochodzi z artefaktu buildu #238; zmieniono wyłącznie nazwę pliku.
+          # SDR-VST3-GPU_SQ4KOU
+
+          Rozszerzona wersja SDR-VST3 przygotowana pod Red Pitaya / Protocol 1 i konfigurację SQ4KOU, z naciskiem na GPU, PureSignal, TCI, stabilność interfejsu oraz trwały zapis ustawień.
+
+          **Build:** #246  
+          **Commit:** `b629ee09368c99bc2d7c670e002b4101313e05a8`
+
+          ## Highlights
+
+          - Natywny **GPU Waterfall na Vortice / Direct3D 11**
+          - GPU FFT i obsługa źródeł **RX1 / RX2 / TX**
+          - Rozszerzone palety **256 kolorów**
+          - Regulacja **Pal Sharp / Pal Contrast**
+          - Pełne działanie **3D Panadapter/Bandscope również podczas TX**
+          - Zwiększony limit **Depth Lines do 240**
+          - Poprawiona geometria 3D i alternatywny tryb oparty o obwiednię sygnału
+          - Przycisk **3D** w `Meters/Gadgets -> Other Buttons` z poprawną synchronizacją stanu po starcie
+          - **TX Preview** — podsłuch toru TX bez MOX
+          - Automatyczne wyciszenie RX podczas TX Preview
+          - Poprawiona obsługa **PureSignal dla Red Pitaya / Protocol 1**
+          - Właściwe mapowanie TX -> IN2 oraz ADC podczas TX
+          - Obsługa **WideBand EP4**
+          - Zaawansowany **TX Waterfall ID**
+          - Rozszerzona integracja **TCI**
+          - Poprawione POWER OFF/ON z ponownym wysłaniem pełnego stanu radia
+          - Usunięte blokady UI związane z TCI i zmianą pasma
+          - Integracja telemetrii **GPS / HPSDR**
+          - Poprawiona obsługa VAC i cmASIO dla Red Pitaya
+          - Rozbudowany i utwardzony system zapisu ustawień
+          - Zapis pozycji i rozmiaru paneli oraz okien
+          - Przesuwanie elementów przez **Shift + LPM**
+          - Zmiana rozmiaru głównego obszaru Bandscope/Waterfall przez **Shift + przeciąganie krawędzi**
+          - Ręcznie ustawione pozycje paneli są chronione przed automatycznym relayoutem
+          - Pozycje zachowują się poprawnie po zmianie MODE i RX2
+          - Konfiguracja filtrów dostępna z SETUP
+          - **Reset to Default RX1 / RX2**
+          - Wybór **Tune Step**
+          - Aktywowane funkcje **Auto Attenuate** dla Red Pitaya
+          - Poprawiony rozmiar i stabilność okna PureSignal
+          - Splashscreen z oznaczeniem **SQ4KOU**
+
+          ## Stability & fixes
+
+          Poprawiono problemy związane z przełączaniem pasm, blokowaniem interfejsu, odtwarzaniem ustawień po restarcie, pozycjonowaniem natywnych paneli, stanem kontrolek GPU/3D po uruchomieniu, zachowaniem RX2, renderowaniem podczas TX oraz synchronizacją TCI.
+
+          Nieudane lub niestabilne rozwiązania eksperymentalne zostały wycofane zamiast pozostawiania ich w kodzie.
+
+          ## Base
+
+          Projekt nadal bazuje na SDR-VST3 i zachowuje jego oryginalne funkcje VST, modemów cyfrowych i pozostałej infrastruktury, rozszerzając je o funkcje potrzebne dla Red Pitaya / Protocol 1 i środowiska SQ4KOU.
+
+          Załączony MSI pochodzi bezpośrednio z artefaktu GitHub Actions **Build #246**.
           EOF
-          gh release create "SDR-VST3-GPU_SQ4KOU" \
-            --target "b447ccdc82fd7921a6cb6972ca4cc52b1ac5ca33" \
-            --title "SDR-VST3-GPU_SQ4KOU" \
+          gh release create "SDR-VST3-GPU_SQ4KOU-build246" \
+            --target "b629ee09368c99bc2d7c670e002b4101313e05a8" \
+            --title "SDR-VST3-GPU_SQ4KOU — Build 246" \
             --notes-file release-notes.md \
-            "SDR-VST3-GPU_SQ4KOU.msi"
+            "SDR-VST3-GPU_SQ4KOU-build246.msi"
