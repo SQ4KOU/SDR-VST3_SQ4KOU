@@ -28262,7 +28262,7 @@ namespace Thetis
                     radio.GetDSPRX(0, 0).SpectrumPreFilter = true;
                     radio.GetDSPRX(1, 0).SpectrumPreFilter = true;
 
-                    pnlDisplay.BringToFront();
+                    pnlDisplay.SendToBack();
 
                     break;
                 case DisplayMode.PANADAPTER:
@@ -28276,7 +28276,7 @@ namespace Thetis
                     radio.GetDSPRX(0, 0).SpectrumPreFilter = true;
                     radio.GetDSPRX(1, 0).SpectrumPreFilter = true;
 
-                    pnlDisplay.BringToFront();
+                    pnlDisplay.SendToBack();
 
                     break;
                 case DisplayMode.SPECTRUM:
