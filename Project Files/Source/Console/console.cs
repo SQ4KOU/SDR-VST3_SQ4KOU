@@ -588,6 +588,132 @@ namespace Thetis
         // ----
         #endregion
 
+
+        // Opacity for floating WinForms windows. The main console (including
+        // bandscope/waterfall) is deliberately excluded.
+        private GuiFloatingOpacityFilter _floatingOpacityFilter;
+
+        private void InstallFloatingOpacityFilter(object sender, EventArgs e)
+        {
+            if (_floatingOpacityFilter != null) return;
+            _floatingOpacityFilter = new GuiFloatingOpacityFilter(this);
+            Application.AddMessageFilter(_floatingOpacityFilter);
+            this.FormClosed += (o, args) =>
+            {
+                Application.RemoveMessageFilter(_floatingOpacityFilter);
+                _floatingOpacityFilter = null;
+            };
+        }
+
+        private sealed class GuiFloatingOpacityFilter : IMessageFilter
+        {
+            private const int WM_RBUTTONUP = 0x0205;
+            private readonly Console _owner;
+            private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
+            private bool _menuOpen;
+
+            internal GuiFloatingOpacityFilter(Console owner)
+            {
+                _owner = owner;
+                foreach (string value in DB.GetVars("GUI_Floating_Opacity"))
+                {
+                    int slash = value.LastIndexOf('/');
+                    int percent;
+                    if (slash > 0 && int.TryParse(value.Substring(slash + 1), out percent))
+                        _opacity[value.Substring(0, slash)] = Math.Max(10, Math.Min(100, percent));
+                }
+                Application.Idle += ApplySavedOpacity;
+            }
+
+            private static string WindowKey(Form form)
+            {
+                frmMeterDisplay meter = form as frmMeterDisplay;
+                return meter != null ? "Meter_" + meter.ID : form.GetType().FullName;
+            }
+
+            private void ApplySavedOpacity(object sender, EventArgs e)
+            {
+                foreach (Form form in Application.OpenForms)
+                {
+                    if (form == _owner || form.IsDisposed) continue;
+                    int percent;
+                    if (_opacity.TryGetValue(WindowKey(form), out percent))
+                    {
+                        double alpha = percent / 100.0;
+                        if (Math.Abs(form.Opacity - alpha) > 0.001) form.Opacity = alpha;
+                    }
+                }
+            }
+
+            private void SaveOpacity()
+            {
+                List<string> state = new List<string>();
+                foreach (KeyValuePair<string, int> item in _opacity)
+                    if (item.Value < 100) state.Add(item.Key + "/" + item.Value);
+                DB.SaveVars("GUI_Floating_Opacity", state, true);
+            }
+
+            public bool PreFilterMessage(ref Message message)
+            {
+                if (message.Msg != WM_RBUTTONUP || (Control.ModifierKeys & Keys.Shift) == 0 || _menuOpen)
+                    return false;
+                Control control = Control.FromHandle(message.HWnd);
+                if (control == null) return false;
+                Form target = control.FindForm();
+                if (target == null || target == _owner || target.IsDisposed) return false;
+                ShowOpacityMenu(target);
+                return true;
+            }
+
+            private void ShowOpacityMenu(Form form)
+            {
+                _menuOpen = true;
+                string key = WindowKey(form);
+                int previous;
+                if (!_opacity.TryGetValue(key, out previous)) previous = 100;
+                bool applied = false;
+                bool explicitClose = false;
+                ContextMenuStrip menu = new ContextMenuStrip();
+                menu.Items.Add(new ToolStripLabel("Window opacity: " + form.Text));
+                TrackBar track = new TrackBar { Minimum = 10, Maximum = 100, Value = previous, TickFrequency = 10, Width = 200 };
+                menu.Items.Add(new ToolStripControlHost(track));
+                ToolStripLabel amount = new ToolStripLabel(previous + "%");
+                menu.Items.Add(amount);
+                track.ValueChanged += (o, e) =>
+                {
+                    form.Opacity = track.Value / 100.0;
+                    amount.Text = track.Value + "%";
+                };
+                ToolStripMenuItem reset = new ToolStripMenuItem("Reset to 100%");
+                reset.Click += (o, e) => track.Value = 100;
+                menu.Items.Add(reset);
+                ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
+                apply.Click += (o, e) =>
+                {
+                    _opacity[key] = track.Value;
+                    SaveOpacity();
+                    applied = true;
+                    explicitClose = true;
+                    menu.Close();
+                };
+                menu.Items.Add(apply);
+                ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
+                cancel.Click += (o, e) => { explicitClose = true; menu.Close(); };
+                menu.Items.Add(cancel);
+                menu.Closing += (o, e) =>
+                {
+                    if (!explicitClose && e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
+                        e.Cancel = true;
+                };
+                menu.Closed += (o, e) =>
+                {
+                    if (!applied && !form.IsDisposed) form.Opacity = previous / 100.0;
+                    _menuOpen = false;
+                };
+                menu.Show(Cursor.Position);
+            }
+        }
+
         #region Constructor and Destructor
         // ======================================================
         // Constructor and Destructor
@@ -750,6 +876,7 @@ namespace Thetis
 
             InitializeComponent();								// Windows Forms Generated Code
             Common.DoubleBufferAll(this, true);
+            this.Shown += InstallFloatingOpacityFilter;
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,
             // to the right of CTUN (free slot at 52,51 in panelDisplay2)
