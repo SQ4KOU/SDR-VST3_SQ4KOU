@@ -777,6 +777,25 @@ namespace Thetis
                     (Control.ModifierKeys & Keys.Shift) == 0) return false;
                 Control c = Control.FromChildHandle(m.HWnd);
                 Form f = c as Form ?? c?.FindForm();
+                // TransparencyKey forwards clicks on transparent background pixels
+                // to the window below. Recover the floating form only when the
+                // event actually reached this application's main console.
+                if (f == _owner)
+                {
+                    Point cursor = Cursor.Position;
+                    foreach (KeyValuePair<Form, BackgroundEffect> entry in _effects)
+                    {
+                        Form candidate = entry.Key;
+                        int opacity;
+                        if (!Supported(candidate) || !candidate.Visible ||
+                            !_saved.TryGetValue(WindowKey(candidate), out opacity) ||
+                            opacity >= 100 ||
+                            !candidate.ClientRectangle.Contains(candidate.PointToClient(cursor)))
+                            continue;
+                        f = candidate;
+                        if (candidate == Form.ActiveForm) break;
+                    }
+                }
                 if (!Supported(f)) return false;
                 _menuOpen = true;
                 if (_owner.IsHandleCreated && !_owner.IsDisposed)
