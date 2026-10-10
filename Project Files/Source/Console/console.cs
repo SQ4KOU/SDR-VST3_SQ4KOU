@@ -3392,6 +3392,9 @@ namespace Thetis
         {
             if (DB.Merged) return;
 
+            // Persist the active view before shutdown changes meter/window visibility.
+            if (_viewLayoutProfilesReady) SaveCurrentViewLayoutProfile();
+
             if (_current_breakin_mode == BreakIn.QSK)
                 QSKEnabled = false;
 
@@ -37842,6 +37845,9 @@ namespace Thetis
             PutConsoleAtBottom(this.Handle, HWND_BOTTOM_CONSOLE, 0, 0, 0, 0,
                 0x0001 | 0x0002 | 0x0010);
             pnlDisplay.SendToBack();
+            // Normal startup must finish creating meters and optional windows first.
+            if (_autoFormLoadingDuplicate.Count == 0)
+                BeginInvoke((Action)InitializeViewLayoutProfiles);
         }
 
         protected override void WndProc(ref Message m)
@@ -42215,10 +42221,91 @@ namespace Thetis
             }
         }
 
+        // Independent positions and visibility for Collapse and Expand.
+        // The settings live in two existing DB-style key/value tables.
+        private bool _viewLayoutProfilesReady;
+        private static string ViewLayoutTable(bool expanded)
+        {
+            return expanded ? "GUI_Expand_Layout" : "GUI_Collapse_Layout";
+        }
+
+        private static string ViewLayoutKey(Form form)
+        {
+            return "Window|" + form.GetType().FullName + "|" + form.Name;
+        }
+
+        private void SaveCurrentViewLayoutProfile()
+        {
+            if (DB.ds == null || DB.Merged) return;
+            Dictionary<string, string> values = DB.GetVarsDictionary(ViewLayoutTable(_isexpanded));
+            values["Console"] = Left.ToString() + "|" + Top.ToString();
+            // Copy first: a window may be closed while handling layout events.
+            List<Form> forms = new List<Form>();
+            foreach (Form f in Application.OpenForms) forms.Add(f);
+            foreach (Form form in forms)
+            {
+                if (form == this || form.IsDisposed || form is frmMeterDisplay ||
+                    string.IsNullOrEmpty(form.Name)) continue;
+                values[ViewLayoutKey(form)] = (form.Visible ? "1" : "0") + "|" +
+                    form.Left.ToString() + "|" + form.Top.ToString();
+            }
+            MeterManager.SaveViewLayout(values);
+            DB.SaveVarsDictionary(ViewLayoutTable(_isexpanded), ref values);
+            // Persist when changing modes; the normal shutdown also writes the DB.
+            if (!DB.WriteDB(DB.FileName))
+                Debug.WriteLine("Could not persist " + ViewLayoutTable(_isexpanded));
+        }
+
+        private void RestoreCurrentViewLayoutProfile()
+        {
+            if (DB.ds == null) return;
+            Dictionary<string, string> values = DB.GetVarsDictionary(ViewLayoutTable(_isexpanded));
+            string saved;
+            if (values.TryGetValue("Console", out saved))
+            {
+                string[] parts = saved.Split('|');
+                int x, y;
+                if (parts.Length == 2 && int.TryParse(parts[0], out x) &&
+                    int.TryParse(parts[1], out y) && WindowState == FormWindowState.Normal)
+                {
+                    Location = new Point(x, y);
+                    Common.ForceFormOnScreen(this);
+                }
+            }
+
+            List<Form> forms = new List<Form>();
+            foreach (Form f in Application.OpenForms) forms.Add(f);
+            foreach (Form form in forms)
+            {
+                if (form == this || form.IsDisposed || form is frmMeterDisplay ||
+                    string.IsNullOrEmpty(form.Name) ||
+                    !values.TryGetValue(ViewLayoutKey(form), out saved)) continue;
+                string[] parts = saved.Split('|');
+                int x, y;
+                if (parts.Length != 3 || !int.TryParse(parts[1], out x) ||
+                    !int.TryParse(parts[2], out y)) continue;
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = new Point(x, y);
+                Common.ForceFormOnScreen(form);
+                if (parts[0] == "1" && !form.Visible) form.Show();
+                else if (parts[0] == "0" && form.Visible) form.Hide();
+            }
+            MeterManager.RestoreViewLayout(values);
+        }
+
+        private void InitializeViewLayoutProfiles()
+        {
+            if (_viewLayoutProfilesReady || IsDisposed || DB.ds == null) return;
+            RestoreCurrentViewLayoutProfile();
+            _viewLayoutProfilesReady = true;
+        }
+
         private bool _modeDependentSettingsFormAutoClosedWhenExpanded = false; // used to bring it back if we go back to collapsed
         private void ExpandDisplay(bool bSuspendDraw = true)
         {
             if (initializing) return;
+            bool changingView = _viewLayoutProfilesReady && _iscollapsed;
+            if (changingView) SaveCurrentViewLayoutProfile();
 
             if (bSuspendDraw) SuspendDrawing(this);
 
@@ -42636,7 +42723,8 @@ namespace Thetis
 
             if (bSuspendDraw) ResumeDrawing(this);
 
-            this.Text = BasicTitleBar; //MW0LGE_21a moved here after expaned is true so that title text gets rebuild correctly
+            this.Text = BasicTitleBar; //MW0LGE_21a moved here after expaned is true so that title text gets rebuilt correctly
+            if (changingView) RestoreCurrentViewLayoutProfile();
         }
         private void setPAProfileLabelPos()
         {
@@ -42688,6 +42776,8 @@ namespace Thetis
         //
         public void CollapseDisplay(bool bSuspendDraw = true)
         {
+            bool changingView = _viewLayoutProfilesReady && !initializing && _isexpanded;
+            if (changingView) SaveCurrentViewLayoutProfile();
             LegacyItemController.Update();
 
             if (bSuspendDraw) SuspendDrawing(this);
@@ -43185,6 +43275,7 @@ namespace Thetis
             setPAProfileLabelPos(); //[2.10.1.0] MW0LGE
 
             if (bSuspendDraw) ResumeDrawing(this);
+            if (changingView) RestoreCurrentViewLayoutProfile();
         }
 
 
@@ -49840,6 +49931,7 @@ namespace Thetis
             if(show) showOnStartup(form);
             if (_autoFormLoadingDuplicate.Count > 0)
                 _autoLoadFormTimerFormTimer.Start();
+            else InitializeViewLayoutProfiles();
         }
         private void showOnStartup(string form)
         {

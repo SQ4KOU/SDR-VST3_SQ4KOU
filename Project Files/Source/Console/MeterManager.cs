@@ -6500,6 +6500,73 @@ namespace Thetis
 
             return bRestoreOk;
         }
+        // Only view-dependent meter placement and enable state are stored here.
+        // Renderer settings, meter contents and hardware logic stay unchanged.
+        public static void SaveViewLayout(Dictionary<string, string> values)
+        {
+            lock (_metersLock)
+            {
+                foreach (KeyValuePair<string, ucMeter> pair in _lstUCMeters)
+                {
+                    frmMeterDisplay form;
+                    if (!_lstMeterDisplayForms.TryGetValue(pair.Key, out form) || form.IsDisposed)
+                        continue;
+                    ucMeter meter = pair.Value;
+                    Point dock = meter.DockedLocation;
+                    values["Meter|" + pair.Key] =
+                        (meter.MeterEnabled ? "1" : "0") + "|" +
+                        (meter.Floating ? "1" : "0") + "|" +
+                        form.Left + "|" + form.Top + "|" + dock.X + "|" + dock.Y;
+                }
+            }
+        }
+
+        public static void RestoreViewLayout(Dictionary<string, string> values)
+        {
+            lock (_metersLock)
+            {
+                foreach (KeyValuePair<string, ucMeter> pair in _lstUCMeters)
+                {
+                    frmMeterDisplay form;
+                    string saved;
+                    if (!_lstMeterDisplayForms.TryGetValue(pair.Key, out form) || form.IsDisposed ||
+                        !values.TryGetValue("Meter|" + pair.Key, out saved)) continue;
+                    string[] parts = saved.Split('|');
+                    int fx, fy, dx, dy;
+                    if (parts.Length != 6 ||
+                        (parts[0] != "0" && parts[0] != "1") ||
+                        (parts[1] != "0" && parts[1] != "1") ||
+                        !int.TryParse(parts[2], out fx) || !int.TryParse(parts[3], out fy) ||
+                        !int.TryParse(parts[4], out dx) || !int.TryParse(parts[5], out dy))
+                        continue;
+
+                    ucMeter meter = pair.Value;
+                    bool enabled = parts[0] == "1";
+                    bool floating = parts[1] == "1";
+                    if (meter.MeterEnabled && !enabled)
+                        enableContainer(pair.Key, false);
+                    meter.DockedLocation = new Point(dx, dy);
+                    form.StartPosition = FormStartPosition.Manual;
+                    form.Location = new Point(fx, fy);
+                    Common.ForceFormOnScreen(form);
+                    if (meter.Floating != floating)
+                    {
+                        if (floating) setMeterFloating(meter, form);
+                        else returnMeterFromFloating(meter, form);
+                    }
+                    if (meter.MeterEnabled != enabled)
+                        enableContainer(pair.Key, enabled);
+                    if (!enabled)
+                    {
+                        form.Hide();
+                        meter.Hide();
+                    }
+                    else if (!floating)
+                        setPoisitionOfDockedMeter(meter);
+                }
+            }
+        }
+
         public static List<string> GetFormGuidList()
         {
             List<string> sGuidList = new List<string>();
