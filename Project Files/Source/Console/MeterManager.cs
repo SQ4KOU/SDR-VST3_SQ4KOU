@@ -6516,7 +6516,8 @@ namespace Thetis
                     values["Meter|" + pair.Key] =
                         (meter.MeterEnabled ? "1" : "0") + "|" +
                         (meter.Floating ? "1" : "0") + "|" +
-                        form.Left + "|" + form.Top + "|" + dock.X + "|" + dock.Y;
+                        form.Left + "|" + form.Top + "|" + dock.X + "|" + dock.Y + "|" +
+                        ((meter.Floating ? form.Visible : meter.Visible) ? "1" : "0");
                 }
             }
         }
@@ -6533,9 +6534,10 @@ namespace Thetis
                         !values.TryGetValue("Meter|" + pair.Key, out saved)) continue;
                     string[] parts = saved.Split('|');
                     int fx, fy, dx, dy;
-                    if (parts.Length != 6 ||
+                    if ((parts.Length != 6 && parts.Length != 7) ||
                         (parts[0] != "0" && parts[0] != "1") ||
                         (parts[1] != "0" && parts[1] != "1") ||
+                        (parts.Length == 7 && parts[6] != "0" && parts[6] != "1") ||
                         !int.TryParse(parts[2], out fx) || !int.TryParse(parts[3], out fy) ||
                         !int.TryParse(parts[4], out dx) || !int.TryParse(parts[5], out dy))
                         continue;
@@ -6543,6 +6545,8 @@ namespace Thetis
                     ucMeter meter = pair.Value;
                     bool enabled = parts[0] == "1";
                     bool floating = parts[1] == "1";
+                    // Six-field profiles from earlier builds remain readable.
+                    bool visible = parts.Length == 6 ? enabled : parts[6] == "1";
                     if (meter.MeterEnabled && !enabled)
                         enableContainer(pair.Key, false);
                     meter.DockedLocation = new Point(dx, dy);
@@ -6561,8 +6565,20 @@ namespace Thetis
                         form.Hide();
                         meter.Hide();
                     }
-                    else if (!floating)
-                        setPoisitionOfDockedMeter(meter);
+                    else if (!meter.HiddenByMacro && !containerShouldHide(meter))
+                    {
+                        if (floating)
+                        {
+                            if (visible && !form.Visible) setMeterFloating(meter, form);
+                            else if (!visible && form.Visible) form.Hide();
+                        }
+                        else
+                        {
+                            setPoisitionOfDockedMeter(meter);
+                            if (visible && !meter.Visible) returnMeterFromFloating(meter, form);
+                            else if (!visible && meter.Visible) meter.Hide();
+                        }
+                    }
                 }
             }
         }
