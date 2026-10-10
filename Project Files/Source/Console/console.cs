@@ -605,24 +605,220 @@ namespace Thetis
             };
         }
 
+
+        // Background-only transparency. The colour-key removes only each
+        // window/control background; a separately layered backing surface draws
+        // that background with the chosen alpha. Text, icons and controls keep
+        // their original (opaque) pixels.
         private sealed class GuiFloatingOpacityFilter : IDisposable
         {
+            private const int GWL_EXSTYLE = -20;
+            private const int WS_EX_LAYERED = 0x00080000;
+            private const int WS_EX_TRANSPARENT = 0x00000020;
+            private const int WS_EX_NOACTIVATE = 0x08000000;
+            private const int WS_EX_TOOLWINDOW = 0x00000080;
+            private const uint LWA_COLORKEY = 0x00000001;
+            private const uint LWA_ALPHA = 0x00000002;
+            private const int WM_NCHITTEST = 0x0084;
+            private const int HTTRANSPARENT = -1;
+            private const uint SWP_NOSIZE = 0x0001;
+            private const uint SWP_NOMOVE = 0x0002;
+            private const uint SWP_NOACTIVATE = 0x0010;
+
+            [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+            private static extern int GetWindowLongOpacity(IntPtr hWnd, int index);
+            [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+            private static extern int SetWindowLongOpacity(IntPtr hWnd, int index, int value);
+            [DllImport("user32.dll", EntryPoint = "SetLayeredWindowAttributes", SetLastError = true)]
+            private static extern bool SetLayeredWindowAttributesOpacity(IntPtr hWnd, uint key, byte alpha, uint flags);
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+            private static uint ColorRef(Color c)
+            {
+                return (uint)(c.R | (c.G << 8) | (c.B << 16));
+            }
+
+            private sealed class WindowUnderlay : Form
+            {
+                public WindowUnderlay()
+                {
+                    FormBorderStyle = FormBorderStyle.None;
+                    ShowInTaskbar = false;
+                    StartPosition = FormStartPosition.Manual;
+                    Enabled = false;
+                }
+                protected override bool ShowWithoutActivation { get { return true; } }
+                protected override CreateParams CreateParams
+                {
+                    get
+                    {
+                        CreateParams cp = base.CreateParams;
+                        cp.ExStyle |= WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                        return cp;
+                    }
+                }
+                protected override void WndProc(ref Message m)
+                {
+                    if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)HTTRANSPARENT; return; }
+                    base.WndProc(ref m);
+                }
+            }
+
+            // Layered child HWND used only for the semitransparent background.
+            // The existing control continues to draw its text/glyphs unmodified.
+            private sealed class ControlUnderlay : Control
+            {
+                public ControlUnderlay()
+                {
+                    SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
+                             ControlStyles.Opaque, true);
+                    TabStop = false;
+                    Enabled = false;
+                }
+                protected override CreateParams CreateParams
+                {
+                    get
+                    {
+                        CreateParams cp = base.CreateParams;
+                        cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+                        return cp;
+                    }
+                }
+                protected override void OnPaint(PaintEventArgs e)
+                {
+                    using (SolidBrush b = new SolidBrush(BackColor))
+                        e.Graphics.FillRectangle(b, ClientRectangle);
+                }
+                protected override void WndProc(ref Message m)
+                {
+                    if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)HTTRANSPARENT; return; }
+                    base.WndProc(ref m);
+                }
+            }
+
+            private sealed class WindowBackground : IDisposable
+            {
+                private readonly Form _window;
+                private readonly Color _initialKey;
+                private readonly Color _background;
+                private WindowUnderlay _underlay;
+                private int _percent = 100;
+
+                internal WindowBackground(Form window)
+                {
+                    _window = window;
+                    _initialKey = window.TransparencyKey;
+                    _background = window.BackColor;
+                }
+
+                internal void Apply(int percent)
+                {
+                    _percent = percent;
+                    if (_window.IsDisposed) { Dispose(); return; }
+                    if (percent >= 100)
+                    {
+                        _window.TransparencyKey = _initialKey;
+                        if (_underlay != null) _underlay.Hide();
+                        return;
+                    }
+
+                    // Do not use Form.Opacity here: that would fade every child.
+                    if (_window.Opacity != 1.0) _window.Opacity = 1.0;
+                    if (_window.TransparencyKey != _background)
+                        _window.TransparencyKey = _background;
+                    if (_underlay == null || _underlay.IsDisposed)
+                        _underlay = new WindowUnderlay();
+
+                    _underlay.BackColor = _background;
+                    _underlay.Opacity = percent / 100.0;
+                    Sync();
+                }
+
+                internal void Sync()
+                {
+                    if (_underlay == null || _underlay.IsDisposed || _window.IsDisposed)
+                        return;
+                    if (_percent >= 100 || !_window.Visible ||
+                        _window.WindowState == FormWindowState.Minimized)
+                    {
+                        _underlay.Hide();
+                        return;
+                    }
+                    Point pt = _window.PointToScreen(Point.Empty);
+                    Rectangle r = new Rectangle(pt, _window.ClientSize);
+                    if (r.Width <= 0 || r.Height <= 0) { _underlay.Hide(); return; }
+                    if (_underlay.Bounds != r) _underlay.Bounds = r;
+                    if (!_underlay.Visible) _underlay.Show();
+                    // Insert immediately behind the original window. It never
+                    // activates and never receives mouse or keyboard input.
+                    SetWindowPos(_underlay.Handle, _window.Handle, 0, 0, 0, 0,
+                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+
+                public void Dispose()
+                {
+                    if (_underlay != null)
+                    {
+                        _underlay.Close();
+                        _underlay.Dispose();
+                        _underlay = null;
+                    }
+                    if (!_window.IsDisposed) _window.TransparencyKey = _initialKey;
+                }
+            }
+
             private readonly Console _owner;
-            private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly Dictionary<string, int> _opacity =
+                new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly Dictionary<string, int> _controlOpacity =
+                new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly Dictionary<Form, WindowBackground> _windows =
+                new Dictionary<Form, WindowBackground>();
+            private readonly Dictionary<Control, int> _originalStyles =
+                new Dictionary<Control, int>();
+            private readonly Dictionary<Control, ControlUnderlay> _underlays =
+                new Dictionary<Control, ControlUnderlay>();
+            private readonly HashSet<Control> _wired = new HashSet<Control>();
+            private System.Windows.Forms.Timer _registrationTimer;
             private bool _menuOpen;
             private Form _previewForm;
 
             internal GuiFloatingOpacityFilter(Console owner)
             {
                 _owner = owner;
-                foreach (string value in DB.GetVars("GUI_Floating_Opacity"))
+                // The key/value API is essential: control paths contain slashes.
+                Load("GUI_Floating_Opacity", _opacity);
+                Load("GUI_Control_Opacity", _controlOpacity);
+            }
+
+            private static void Load(string table, Dictionary<string, int> target)
+            {
+                foreach (KeyValuePair<string, string> kv in DB.GetVarsDictionary(table))
                 {
-                    int slash = value.LastIndexOf('/');
-                    int percent;
-                    if (slash > 0 && int.TryParse(value.Substring(slash + 1), out percent))
-                        _opacity[value.Substring(0, slash)] = Math.Max(10, Math.Min(100, percent));
+                    int value;
+                    if (int.TryParse(kv.Value, out value))
+                        target[kv.Key] = Math.Max(10, Math.Min(100, value));
                 }
-                Application.Idle += ApplySavedOpacity;
+            }
+
+            private static bool Save(string table, string key, int value)
+            {
+                Dictionary<string, string> state = DB.GetVarsDictionary(table);
+                string previous;
+                bool hadPrevious = state.TryGetValue(key, out previous);
+                state[key] = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                DB.SaveVarsDictionary(table, ref state);
+                string readback;
+                bool ok = DB.GetVarsDictionary(table).TryGetValue(key, out readback) &&
+                          readback == state[key] && DB.WriteDB(DB.FileName);
+                if (!ok)
+                {
+                    // Restore the previous in-memory setting on an I/O failure.
+                    state[key] = hadPrevious ? previous : "100";
+                    DB.SaveVarsDictionary(table, ref state);
+                }
+                return ok;
             }
 
             private static string WindowKey(Form form)
@@ -631,35 +827,6 @@ namespace Thetis
                 return meter != null ? "Meter_" + meter.ID : form.GetType().FullName;
             }
 
-            private void ApplySavedOpacity(object sender, EventArgs e)
-            {
-                foreach (Form form in Application.OpenForms)
-                {
-                    if (form == _owner || form == _previewForm || form.IsDisposed) continue;
-                    int percent;
-                    if (_opacity.TryGetValue(WindowKey(form), out percent))
-                    {
-                        double alpha = percent / 100.0;
-                        if (Math.Abs(form.Opacity - alpha) > 0.001) form.Opacity = alpha;
-                    }
-                }
-            }
-
-            private bool SaveOpacity()
-            {
-                Dictionary<string, string> state = DB.GetVarsDictionary("GUI_Floating_Opacity");
-                foreach (KeyValuePair<string, int> item in _opacity)
-                    state[item.Key] = item.Value.ToString(); // Store 100% to overwrite prior values.
-                DB.SaveVarsDictionary("GUI_Floating_Opacity", ref state);
-                return DB.WriteDB(DB.FileName);
-            }
-
-            private readonly HashSet<Control> _wired = new HashSet<Control>();
-            private readonly Dictionary<string, int> _controlOpacity = new Dictionary<string, int>(StringComparer.Ordinal);
-            private readonly Dictionary<Control, int> _originalStyles = new Dictionary<Control, int>();
-            private const int CONTROL_GWL_EXSTYLE = -20;
-            private const int CONTROL_WS_EX_LAYERED = 0x80000;
-            private const uint CONTROL_LWA_ALPHA = 2;
             private static string ControlKey(Control control)
             {
                 List<string> parts = new List<string>();
@@ -667,54 +834,149 @@ namespace Thetis
                     parts.Insert(0, string.IsNullOrEmpty(c.Name) ? c.GetType().Name : c.Name);
                 return string.Join("/", parts.ToArray());
             }
-            private void ApplyControlOpacity(Control control, int percent)
+
+            private bool Excluded(Control control)
             {
-                if (control.IsDisposed || !control.IsHandleCreated) return;
+                if (control == _owner || control == _owner.pnlDisplay ||
+                    control == _owner.panelDisplay) return true;
+                return _owner.pnlDisplay.Contains(control) ||
+                       _owner.panelDisplay.Contains(control);
+            }
+
+            private bool SetBackgroundKey(Control control)
+            {
+                if (control.IsDisposed || !control.IsHandleCreated ||
+                    control.BackColor == Color.Transparent ||
+                    control.BackColor.A == 0) return false;
                 int original;
                 if (!_originalStyles.TryGetValue(control, out original))
                 {
-                    original = GetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE);
+                    original = GetWindowLongOpacity(control.Handle, GWL_EXSTYLE);
                     _originalStyles[control] = original;
                 }
-                if (percent >= 100)
-                    SetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE, original);
-                else
+                SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original | WS_EX_LAYERED);
+                return SetLayeredWindowAttributesOpacity(control.Handle,
+                    ColorRef(control.BackColor), 255, LWA_COLORKEY);
+            }
+
+            private void RestoreBackgroundKey(Control control)
+            {
+                int original;
+                if (_originalStyles.TryGetValue(control, out original))
                 {
-                    SetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE, original | CONTROL_WS_EX_LAYERED);
-                    SetLayeredWindowAttributesOpacity(control.Handle, 0,
-                        (byte)((percent * 255 + 50) / 100), CONTROL_LWA_ALPHA);
+                    if (!control.IsDisposed && control.IsHandleCreated)
+                        SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original);
+                    _originalStyles.Remove(control);
                 }
             }
-            private System.Windows.Forms.Timer _registrationTimer;
+
+            private static bool IsBackgroundContainer(Control control)
+            {
+                // Interactive widgets remain fully opaque, including button
+                // surfaces and text fields; only their background containers fade.
+                return control is Panel || control is UserControl ||
+                       control is GroupBox;
+            }
+
+            private void SetFormChildBackgrounds(Form form, int percent)
+            {
+                Queue<Control> pending = new Queue<Control>();
+                foreach (Control child in form.Controls) pending.Enqueue(child);
+                while (pending.Count > 0)
+                {
+                    Control child = pending.Dequeue();
+                    if (child.IsDisposed) continue;
+                    if (IsBackgroundContainer(child))
+                    {
+                        if (percent < 100) SetBackgroundKey(child);
+                        else RestoreBackgroundKey(child);
+                    }
+                    foreach (Control nested in child.Controls) pending.Enqueue(nested);
+                }
+            }
+
+            private void ApplyWindow(Form form, int percent)
+            {
+                WindowBackground effect;
+                if (!_windows.TryGetValue(form, out effect))
+                {
+                    effect = new WindowBackground(form);
+                    _windows.Add(form, effect);
+                }
+                effect.Apply(percent);
+                SetFormChildBackgrounds(form, percent);
+            }
+
+            private void ApplyControl(Control control, int percent)
+            {
+                if (control.IsDisposed) return;
+                ControlUnderlay backing;
+                if (percent >= 100 || control.Parent == null ||
+                    control.BackColor == Color.Transparent || control.BackColor.A == 0)
+                {
+                    RestoreBackgroundKey(control);
+                    if (_underlays.TryGetValue(control, out backing))
+                    {
+                        _underlays.Remove(control);
+                        backing.Dispose();
+                    }
+                    return;
+                }
+
+                if (!SetBackgroundKey(control)) return;
+                if (!_underlays.TryGetValue(control, out backing) ||
+                    backing.IsDisposed || backing.Parent != control.Parent)
+                {
+                    if (backing != null) backing.Dispose();
+                    backing = new ControlUnderlay();
+                    _underlays[control] = backing;
+                    control.Parent.Controls.Add(backing);
+                }
+                backing.Bounds = control.Bounds;
+                backing.BackColor = control.BackColor;
+                backing.Visible = control.Visible;
+                int index = control.Parent.Controls.GetChildIndex(control);
+                control.Parent.Controls.SetChildIndex(backing,
+                    Math.Min(index + 1, control.Parent.Controls.Count - 1));
+                SetLayeredWindowAttributesOpacity(backing.Handle, 0,
+                    (byte)((percent * 255 + 50) / 100), LWA_ALPHA);
+            }
+
             private void Wire(Control control)
             {
+                if (control is ControlUnderlay || control is WindowUnderlay) return;
                 if (!_wired.Add(control)) return;
                 control.MouseDown += HandleRightClick;
-                control.HandleCreated += (sender, e) =>
-                {
-                    _originalStyles.Remove(control);
-                    int saved;
-                    if (_controlOpacity.TryGetValue(ControlKey(control), out saved))
-                        ApplyControlOpacity(control, saved);
-                };
-                int opacity;
-                if (_controlOpacity.TryGetValue(ControlKey(control), out opacity))
-                    ApplyControlOpacity(control, opacity);
-                control.ControlAdded += (sender, e) => Wire(e.Control);
+                control.HandleCreated += OnControlHandleCreated;
+                control.ControlAdded += OnControlAdded;
+                int value;
+                if (control.FindForm() == _owner &&
+                    _controlOpacity.TryGetValue(ControlKey(control), out value))
+                    ApplyControl(control, value);
                 foreach (Control child in control.Controls) Wire(child);
+            }
+
+            private void OnControlAdded(object sender, ControlEventArgs e) { Wire(e.Control); }
+
+            private void OnControlHandleCreated(object sender, EventArgs e)
+            {
+                Control control = (Control)sender;
+                _originalStyles.Remove(control);
+                int percent;
+                Form form = control.FindForm();
+                if (form == _owner && _controlOpacity.TryGetValue(ControlKey(control), out percent))
+                    ApplyControl(control, percent);
+                else if (form != null && form != _owner &&
+                         _opacity.TryGetValue(WindowKey(form), out percent) && percent < 100 &&
+                         IsBackgroundContainer(control))
+                    SetBackgroundKey(control);
             }
 
             internal void Install()
             {
-                // Use the key/value API: control paths contain '/', which SaveVars parses.
-                foreach (KeyValuePair<string, string> entry in DB.GetVarsDictionary("GUI_Control_Opacity"))
-                {
-                    int opacity;
-                    if (int.TryParse(entry.Value, out opacity))
-                        _controlOpacity[entry.Key] = Math.Max(10, Math.Min(100, opacity));
-                }
                 Wire(_owner);
                 WireOpenForms(this, EventArgs.Empty);
+                Application.Idle += ApplySavedOpacity;
                 _registrationTimer = new System.Windows.Forms.Timer { Interval = 250 };
                 _registrationTimer.Tick += WireOpenForms;
                 _registrationTimer.Start();
@@ -723,22 +985,48 @@ namespace Thetis
             private void WireOpenForms(object sender, EventArgs e)
             {
                 foreach (Form form in Application.OpenForms)
-                    if (form != _owner && !form.IsDisposed) Wire(form);
+                    if (form != _owner && !(form is WindowUnderlay) && !form.IsDisposed)
+                        Wire(form);
+                foreach (KeyValuePair<Control, ControlUnderlay> pair in _underlays)
+                {
+                    Control target = pair.Key;
+                    ControlUnderlay backing = pair.Value;
+                    if (target.IsDisposed || backing.IsDisposed) continue;
+                    backing.Bounds = target.Bounds;
+                    backing.Visible = target.Visible;
+                }
             }
 
-            public void Dispose()
+            private void ApplySavedOpacity(object sender, EventArgs e)
             {
-                if (_registrationTimer != null)
+                foreach (Form form in Application.OpenForms)
                 {
-                    _registrationTimer.Stop();
-                    _registrationTimer.Tick -= WireOpenForms;
-                    _registrationTimer.Dispose();
-                    _registrationTimer = null;
+                    if (form == _owner || form == _previewForm ||
+                        form is WindowUnderlay || form.IsDisposed) continue;
+                    int value;
+                    if (!_opacity.TryGetValue(WindowKey(form), out value)) value = 100;
+                    WindowBackground effect;
+                    if (!_windows.TryGetValue(form, out effect))
+                    {
+                        if (value == 100) continue;
+                        ApplyWindow(form, value);
+                    }
+                    else effect.Sync();
                 }
-                Application.Idle -= ApplySavedOpacity;
-                foreach (Control control in _wired)
-                    if (!control.IsDisposed) control.MouseDown -= HandleRightClick;
-                _wired.Clear();
+
+                List<Form> gone = null;
+                foreach (KeyValuePair<Form, WindowBackground> pair in _windows)
+                    if (pair.Key.IsDisposed)
+                    {
+                        if (gone == null) gone = new List<Form>();
+                        gone.Add(pair.Key);
+                    }
+                if (gone != null)
+                    foreach (Form form in gone)
+                    {
+                        _windows[form].Dispose();
+                        _windows.Remove(form);
+                    }
             }
 
             private void HandleRightClick(object sender, MouseEventArgs e)
@@ -746,117 +1034,52 @@ namespace Thetis
                 if (_menuOpen || e.Button != MouseButtons.Right ||
                     (Control.ModifierKeys & Keys.Shift) == 0) return;
                 Control control = sender as Control;
-                Form form = control as Form ?? control?.FindForm();
+                if (control == null || control.IsDisposed) return;
+                Form form = control as Form ?? control.FindForm();
                 if (form == null || form.IsDisposed) return;
                 if (form == _owner)
                 {
-                    // The console's child controls must receive the gesture too.
-                    // Never change the opacity of the main display window.
-                    if (control == _owner || control == _owner.pnlDisplay ||
-                        control == _owner.panelDisplay ||
-                        _owner.pnlDisplay.Contains(control) ||
-                        _owner.panelDisplay.Contains(control))
-                        return;
-                    ShowControlOpacityMenu(control);
-                    return;
+                    if (!Excluded(control)) ShowControlMenu(control);
                 }
-                ShowOpacityMenu(form);
+                else if (!(form is WindowUnderlay))
+                    ShowWindowMenu(form);
             }
 
-            private void ShowControlOpacityMenu(Control control)
+            private void ShowControlMenu(Control control)
             {
-                if (!control.IsHandleCreated || _menuOpen) return;
                 _menuOpen = true;
                 string key = ControlKey(control);
-                int oldPercent;
-                if (!_controlOpacity.TryGetValue(key, out oldPercent)) oldPercent = 100;
-                ContextMenuStrip menu = new ContextMenuStrip();
-                TrackBar bar = new TrackBar { Minimum = 10, Maximum = 100, Value = oldPercent, Width = 200 };
-                menu.Items.Add(new ToolStripLabel("Opacity: " + control.Name));
-                menu.Items.Add(new ToolStripControlHost(bar));
-                ToolStripLabel amount = new ToolStripLabel(oldPercent + "%");
-                menu.Items.Add(amount);
-                bar.ValueChanged += (o, e) =>
-                {
-                    ApplyControlOpacity(control, bar.Value);
-                    amount.Text = bar.Value + "%";
-                };
-                ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
-                reset.Click += (o, e) => bar.Value = 100;
-                menu.Items.Add(reset);
-                bool applied = false;
-                ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
-                apply.Click += (o, e) =>
-                {
-                    // Atomic database write + verified readback. Store even 100%
-                    // so Reset overwrites the previously saved opacity.
-                    Dictionary<string, string> state = DB.GetVarsDictionary("GUI_Control_Opacity");
-                    state[key] = bar.Value.ToString();
-                    DB.SaveVarsDictionary("GUI_Control_Opacity", ref state);
-                    string stored;
-                    if (!DB.GetVarsDictionary("GUI_Control_Opacity").TryGetValue(key, out stored) ||
-                        stored != bar.Value.ToString() || !DB.WriteDB(DB.FileName))
-                    {
-                        MessageBox.Show("Opacity setting could not be saved.", "Opacity",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                    _controlOpacity[key] = bar.Value;
-                    applied = true;
-                    menu.Close();
-                };
-                menu.Items.Add(apply);
-                ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
-                cancel.Click += (o, e) => menu.Close();
-                menu.Items.Add(cancel);
-                menu.Closed += (o, e) =>
-                {
-                    if (!applied && !control.IsDisposed)
-                        ApplyControlOpacity(control, oldPercent);
-                    _menuOpen = false;
-                };
-                menu.Show(Cursor.Position);
-            }
-            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLong")]
-            private static extern int GetWindowLongOpacity(IntPtr h, int index);
-            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLong")]
-            private static extern int SetWindowLongOpacity(IntPtr h, int index, int value);
-            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetLayeredWindowAttributes", SetLastError = true)]
-            private static extern bool SetLayeredWindowAttributesOpacity(IntPtr h, uint key, byte alpha, uint flags);
-
-            private void ShowOpacityMenu(Form form)
-            {
-                _menuOpen = true;
-                _previewForm = form;
-                string key = WindowKey(form);
                 int previous;
-                if (!_opacity.TryGetValue(key, out previous)) previous = 100;
+                if (!_controlOpacity.TryGetValue(key, out previous)) previous = 100;
                 bool applied = false;
                 bool explicitClose = false;
                 ContextMenuStrip menu = new ContextMenuStrip();
-                menu.Items.Add(new ToolStripLabel("Window opacity: " + form.Text));
-                TrackBar track = new TrackBar { Minimum = 10, Maximum = 100, Value = previous, TickFrequency = 10, Width = 200 };
-                menu.Items.Add(new ToolStripControlHost(track));
+                menu.Items.Add(new ToolStripLabel("Background opacity: " + control.Name));
+                TrackBar slider = new TrackBar
+                {
+                    Minimum = 10, Maximum = 100, Value = previous, Width = 200, TickFrequency = 10
+                };
+                menu.Items.Add(new ToolStripControlHost(slider));
                 ToolStripLabel amount = new ToolStripLabel(previous + "%");
                 menu.Items.Add(amount);
-                track.ValueChanged += (o, e) =>
+                slider.ValueChanged += (o, e) =>
                 {
-                    form.Opacity = track.Value / 100.0;
-                    amount.Text = track.Value + "%";
+                    ApplyControl(control, slider.Value);
+                    amount.Text = slider.Value + "%";
                 };
-                ToolStripMenuItem reset = new ToolStripMenuItem("Reset to 100%");
-                reset.Click += (o, e) => track.Value = 100;
+                ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
+                reset.Click += (o, e) => slider.Value = 100;
                 menu.Items.Add(reset);
                 ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
                 apply.Click += (o, e) =>
                 {
-                    int old = previous;
-                    _opacity[key] = track.Value;
-                    if (!SaveOpacity())
+                    if (!Save("GUI_Control_Opacity", key, slider.Value))
                     {
-                        _opacity[key] = old;
+                        MessageBox.Show("Background opacity could not be saved.",
+                            "Opacity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
+                    _controlOpacity[key] = slider.Value;
                     applied = true;
                     explicitClose = true;
                     menu.Close();
@@ -872,11 +1095,99 @@ namespace Thetis
                 };
                 menu.Closed += (o, e) =>
                 {
-                    if (!applied && !form.IsDisposed) form.Opacity = previous / 100.0;
-                    _previewForm = null;
+                    if (!applied && !control.IsDisposed) ApplyControl(control, previous);
                     _menuOpen = false;
+                    menu.Dispose();
                 };
                 menu.Show(Cursor.Position);
+            }
+
+            private void ShowWindowMenu(Form form)
+            {
+                _menuOpen = true;
+                _previewForm = form;
+                string key = WindowKey(form);
+                int previous;
+                if (!_opacity.TryGetValue(key, out previous)) previous = 100;
+                bool applied = false;
+                bool explicitClose = false;
+                ContextMenuStrip menu = new ContextMenuStrip();
+                menu.Items.Add(new ToolStripLabel("Background opacity: " + form.Text));
+                TrackBar slider = new TrackBar
+                {
+                    Minimum = 10, Maximum = 100, Value = previous, TickFrequency = 10, Width = 200
+                };
+                menu.Items.Add(new ToolStripControlHost(slider));
+                ToolStripLabel amount = new ToolStripLabel(previous + "%");
+                menu.Items.Add(amount);
+                slider.ValueChanged += (o, e) =>
+                {
+                    ApplyWindow(form, slider.Value);
+                    amount.Text = slider.Value + "%";
+                };
+                ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
+                reset.Click += (o, e) => slider.Value = 100;
+                menu.Items.Add(reset);
+                ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
+                apply.Click += (o, e) =>
+                {
+                    if (!Save("GUI_Floating_Opacity", key, slider.Value))
+                    {
+                        MessageBox.Show("Background opacity could not be saved.",
+                            "Opacity", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    _opacity[key] = slider.Value;
+                    applied = true;
+                    explicitClose = true;
+                    menu.Close();
+                };
+                menu.Items.Add(apply);
+                ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
+                cancel.Click += (o, e) => { explicitClose = true; menu.Close(); };
+                menu.Items.Add(cancel);
+                menu.Closing += (o, e) =>
+                {
+                    if (!explicitClose && e.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
+                        e.Cancel = true;
+                };
+                menu.Closed += (o, e) =>
+                {
+                    if (!applied && !form.IsDisposed) ApplyWindow(form, previous);
+                    _previewForm = null;
+                    _menuOpen = false;
+                    menu.Dispose();
+                };
+                menu.Show(Cursor.Position);
+            }
+
+            public void Dispose()
+            {
+                if (_registrationTimer != null)
+                {
+                    _registrationTimer.Stop();
+                    _registrationTimer.Tick -= WireOpenForms;
+                    _registrationTimer.Dispose();
+                    _registrationTimer = null;
+                }
+                Application.Idle -= ApplySavedOpacity;
+                foreach (Control control in _wired)
+                {
+                    if (control.IsDisposed) continue;
+                    control.MouseDown -= HandleRightClick;
+                    control.HandleCreated -= OnControlHandleCreated;
+                    control.ControlAdded -= OnControlAdded;
+                }
+                _wired.Clear();
+                foreach (KeyValuePair<Control, ControlUnderlay> pair in _underlays)
+                {
+                    RestoreBackgroundKey(pair.Key);
+                    pair.Value.Dispose();
+                }
+                _underlays.Clear();
+                foreach (KeyValuePair<Form, WindowBackground> pair in _windows)
+                    pair.Value.Dispose();
+                _windows.Clear();
             }
         }
 
