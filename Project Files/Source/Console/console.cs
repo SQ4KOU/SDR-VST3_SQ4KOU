@@ -710,7 +710,10 @@ namespace Thetis
                     _window = window;
                     _initialKey = window.TransparencyKey;
                     _background = window.BackColor;
+                    _window.Activated += OnActivated;
                 }
+
+                private void OnActivated(object sender, EventArgs e) { Sync(true); }
 
                 internal void Apply(int percent)
                 {
@@ -732,10 +735,10 @@ namespace Thetis
 
                     _underlay.BackColor = _background;
                     _underlay.Opacity = percent / 100.0;
-                    Sync();
+                    Sync(true);
                 }
 
-                internal void Sync()
+                internal void Sync(bool force = false)
                 {
                     if (_underlay == null || _underlay.IsDisposed || _window.IsDisposed)
                         return;
@@ -748,16 +751,19 @@ namespace Thetis
                     Point pt = _window.PointToScreen(Point.Empty);
                     Rectangle r = new Rectangle(pt, _window.ClientSize);
                     if (r.Width <= 0 || r.Height <= 0) { _underlay.Hide(); return; }
-                    if (_underlay.Bounds != r) _underlay.Bounds = r;
-                    if (!_underlay.Visible) _underlay.Show();
-                    // Insert immediately behind the original window. It never
-                    // activates and never receives mouse or keyboard input.
-                    SetWindowPos(_underlay.Handle, _window.Handle, 0, 0, 0, 0,
-                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    bool moved = _underlay.Bounds != r;
+                    bool revealed = !_underlay.Visible;
+                    if (moved) _underlay.Bounds = r;
+                    if (revealed) _underlay.Show();
+                    // Do not repeatedly reorder HWNDs during every Idle event.
+                    if (moved || revealed || force)
+                        SetWindowPos(_underlay.Handle, _window.Handle, 0, 0, 0, 0,
+                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
 
                 public void Dispose()
                 {
+                    _window.Activated -= OnActivated;
                     if (_underlay != null)
                     {
                         _underlay.Close();
