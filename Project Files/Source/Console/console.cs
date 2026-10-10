@@ -645,12 +645,13 @@ namespace Thetis
                 }
             }
 
-            private void SaveOpacity()
+            private bool SaveOpacity()
             {
-                List<string> state = new List<string>();
+                Dictionary<string, string> state = DB.GetVarsDictionary("GUI_Floating_Opacity");
                 foreach (KeyValuePair<string, int> item in _opacity)
-                    if (item.Value < 100) state.Add(item.Key + "/" + item.Value);
-                DB.SaveVars("GUI_Floating_Opacity", state, true);
+                    state[item.Key] = item.Value.ToString(); // Store 100% to overwrite prior values.
+                DB.SaveVarsDictionary("GUI_Floating_Opacity", ref state);
+                return DB.WriteDB(DB.FileName);
             }
 
             private readonly HashSet<Control> _wired = new HashSet<Control>();
@@ -849,8 +850,13 @@ namespace Thetis
                 ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
                 apply.Click += (o, e) =>
                 {
+                    int old = previous;
                     _opacity[key] = track.Value;
-                    SaveOpacity();
+                    if (!SaveOpacity())
+                    {
+                        _opacity[key] = old;
+                        return;
+                    }
                     applied = true;
                     explicitClose = true;
                     menu.Close();
