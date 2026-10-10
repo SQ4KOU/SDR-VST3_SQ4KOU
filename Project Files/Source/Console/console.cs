@@ -654,17 +654,64 @@ namespace Thetis
             }
 
             private readonly HashSet<Control> _wired = new HashSet<Control>();
+            private readonly Dictionary<string, int> _controlOpacity = new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly Dictionary<Control, int> _originalStyles = new Dictionary<Control, int>();
+            private const int CONTROL_GWL_EXSTYLE = -20;
+            private const int CONTROL_WS_EX_LAYERED = 0x80000;
+            private const uint CONTROL_LWA_ALPHA = 2;
+            private static string ControlKey(Control control)
+            {
+                List<string> parts = new List<string>();
+                for (Control c = control; c != null; c = c.Parent)
+                    parts.Insert(0, string.IsNullOrEmpty(c.Name) ? c.GetType().Name : c.Name);
+                return string.Join("/", parts.ToArray());
+            }
+            private void ApplyControlOpacity(Control control, int percent)
+            {
+                if (control.IsDisposed || !control.IsHandleCreated) return;
+                int original;
+                if (!_originalStyles.TryGetValue(control, out original))
+                {
+                    original = GetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE);
+                    _originalStyles[control] = original;
+                }
+                if (percent >= 100)
+                    SetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE, original);
+                else
+                {
+                    SetWindowLongOpacity(control.Handle, CONTROL_GWL_EXSTYLE, original | CONTROL_WS_EX_LAYERED);
+                    SetLayeredWindowAttributesOpacity(control.Handle, 0,
+                        (byte)((percent * 255 + 50) / 100), CONTROL_LWA_ALPHA);
+                }
+            }
             private System.Windows.Forms.Timer _registrationTimer;
             private void Wire(Control control)
             {
                 if (!_wired.Add(control)) return;
                 control.MouseDown += HandleRightClick;
+                control.HandleCreated += (sender, e) =>
+                {
+                    _originalStyles.Remove(control);
+                    int saved;
+                    if (_controlOpacity.TryGetValue(ControlKey(control), out saved))
+                        ApplyControlOpacity(control, saved);
+                };
+                int opacity;
+                if (_controlOpacity.TryGetValue(ControlKey(control), out opacity))
+                    ApplyControlOpacity(control, opacity);
                 control.ControlAdded += (sender, e) => Wire(e.Control);
                 foreach (Control child in control.Controls) Wire(child);
             }
 
             internal void Install()
             {
+                foreach (string entry in DB.GetVars("GUI_Control_Opacity"))
+                {
+                    int slash = entry.LastIndexOf('|');
+                    int opacity;
+                    if (slash > 0 && int.TryParse(entry.Substring(slash + 1), out opacity))
+                        _controlOpacity[entry.Substring(0, slash)] = Math.Max(10, Math.Min(100, opacity));
+                }
                 Wire(_owner);
                 WireOpenForms(this, EventArgs.Empty);
                 _registrationTimer = new System.Windows.Forms.Timer { Interval = 250 };
@@ -717,42 +764,48 @@ namespace Thetis
 
             private void ShowControlOpacityMenu(Control control)
             {
-                // Dedicated menu for controls within the main console.
-                // Use native child-window alpha, never Form.Opacity on the console.
                 if (!control.IsHandleCreated || _menuOpen) return;
                 _menuOpen = true;
-                const int GWL_EXSTYLE = -20;
-                const int WS_EX_LAYERED = 0x80000;
-                const uint LWA_ALPHA = 2;
+                string key = ControlKey(control);
+                int oldPercent;
+                if (!_controlOpacity.TryGetValue(key, out oldPercent)) oldPercent = 100;
                 ContextMenuStrip menu = new ContextMenuStrip();
-                int original = GetWindowLongOpacity(control.Handle, GWL_EXSTYLE);
-                int value = 100;
-                TrackBar bar = new TrackBar { Minimum = 10, Maximum = 100, Value = value, Width = 200 };
+                TrackBar bar = new TrackBar { Minimum = 10, Maximum = 100, Value = oldPercent, Width = 200 };
                 menu.Items.Add(new ToolStripLabel("Opacity: " + control.Name));
                 menu.Items.Add(new ToolStripControlHost(bar));
+                ToolStripLabel amount = new ToolStripLabel(oldPercent + "%");
+                menu.Items.Add(amount);
                 bar.ValueChanged += (o, e) =>
                 {
-                    SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original | WS_EX_LAYERED);
-                    SetLayeredWindowAttributesOpacity(control.Handle, 0,
-                        (byte)((bar.Value * 255) / 100), LWA_ALPHA);
+                    ApplyControlOpacity(control, bar.Value);
+                    amount.Text = bar.Value + "%";
                 };
                 ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
                 reset.Click += (o, e) => bar.Value = 100;
                 menu.Items.Add(reset);
                 bool applied = false;
                 ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
-                apply.Click += (o, e) => { applied = true; menu.Close(); };
+                apply.Click += (o, e) =>
+                {
+                    List<string> state = new List<string>();
+                    foreach (KeyValuePair<string, int> item in _controlOpacity)
+                        if (item.Key != key && item.Value != 100) state.Add(item.Key + "|" + item.Value);
+                    if (bar.Value < 100) state.Add(key + "|" + bar.Value);
+                    DB.SaveVars("GUI_Control_Opacity", state, true);
+                    if (bar.Value == 100) _controlOpacity.Remove(key);
+                    else _controlOpacity[key] = bar.Value;
+                    applied = true;
+                    menu.Close();
+                };
                 menu.Items.Add(apply);
                 ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
                 cancel.Click += (o, e) => menu.Close();
                 menu.Items.Add(cancel);
                 menu.Closed += (o, e) =>
                 {
-                    if (!applied || bar.Value == 100)
-                        SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original);
+                    if (!applied && !control.IsDisposed)
+                        ApplyControlOpacity(control, oldPercent);
                     _menuOpen = false;
-                    // WinForms still processes ToolStrip item click after Closed.
-                    // Do not dispose the menu synchronously here.
                 };
                 menu.Show(Cursor.Position);
             }
