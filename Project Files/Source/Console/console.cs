@@ -697,6 +697,7 @@ namespace Thetis
             // Keep a full snapshot: Cancel/escape/outside click must restore live preview.
             Dictionary<string, int> snapshot = new Dictionary<string, int>(_guiElementOpacity, StringComparer.Ordinal);
             bool applied = false;
+            bool closeRequested = false;
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.AutoClose = true;
             menu.Items.Add(new ToolStripLabel("Opacity: " + selected.Name));
@@ -743,12 +744,19 @@ namespace Thetis
             apply.Click += (o, args) =>
             {
                 applied = true;
+                closeRequested = true;
                 GuiOpacitySave();
                 menu.Close();
             };
             menu.Items.Add(apply);
             ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
-            cancel.Click += (o, args) => menu.Close();
+            cancel.Click += (o, args) => { closeRequested = true; menu.Close(); };
+            menu.Closing += (o, args) =>
+            {
+                // Reset and Apply to All adjust the preview, not the final choice.
+                if (!closeRequested && args.CloseReason == ToolStripDropDownCloseReason.ItemClicked)
+                    args.Cancel = true;
+            };
             menu.Items.Add(cancel);
             menu.Closed += (o, args) =>
             {
