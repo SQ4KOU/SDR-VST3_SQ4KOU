@@ -705,12 +705,12 @@ namespace Thetis
 
             internal void Install()
             {
-                foreach (string entry in DB.GetVars("GUI_Control_Opacity"))
+                // Use the key/value API: control paths contain '/', which SaveVars parses.
+                foreach (KeyValuePair<string, string> entry in DB.GetVarsDictionary("GUI_Control_Opacity"))
                 {
-                    int slash = entry.LastIndexOf('|');
                     int opacity;
-                    if (slash > 0 && int.TryParse(entry.Substring(slash + 1), out opacity))
-                        _controlOpacity[entry.Substring(0, slash)] = Math.Max(10, Math.Min(100, opacity));
+                    if (int.TryParse(entry.Value, out opacity))
+                        _controlOpacity[entry.Key] = Math.Max(10, Math.Min(100, opacity));
                 }
                 Wire(_owner);
                 WireOpenForms(this, EventArgs.Empty);
@@ -787,13 +787,20 @@ namespace Thetis
                 ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
                 apply.Click += (o, e) =>
                 {
-                    List<string> state = new List<string>();
-                    foreach (KeyValuePair<string, int> item in _controlOpacity)
-                        if (item.Key != key && item.Value != 100) state.Add(item.Key + "|" + item.Value);
-                    if (bar.Value < 100) state.Add(key + "|" + bar.Value);
-                    DB.SaveVars("GUI_Control_Opacity", state, true);
-                    if (bar.Value == 100) _controlOpacity.Remove(key);
-                    else _controlOpacity[key] = bar.Value;
+                    // Atomic database write + verified readback. Store even 100%
+                    // so Reset overwrites the previously saved opacity.
+                    Dictionary<string, string> state = DB.GetVarsDictionary("GUI_Control_Opacity");
+                    state[key] = bar.Value.ToString();
+                    DB.SaveVarsDictionary("GUI_Control_Opacity", ref state);
+                    string stored;
+                    if (!DB.GetVarsDictionary("GUI_Control_Opacity").TryGetValue(key, out stored) ||
+                        stored != bar.Value.ToString() || !DB.WriteDB(DB.FileName))
+                    {
+                        MessageBox.Show("Opacity setting could not be saved.", "Opacity",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    _controlOpacity[key] = bar.Value;
                     applied = true;
                     menu.Close();
                 };
