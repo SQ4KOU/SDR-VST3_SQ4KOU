@@ -607,104 +607,43 @@ namespace Thetis
 
         private sealed class GuiFloatingOpacityFilter : IDisposable
         {
-            private const int WH_MOUSE_LL = 14;
+            private const int WM_RBUTTONDOWN = 0x0204;
             private const int WM_RBUTTONUP = 0x0205;
             private const int WM_NCRBUTTONUP = 0x00A5;
-            private const int VK_SHIFT = 0x10;
-            private const uint GA_ROOT = 2;
-
-            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-            private struct MouseHookData
-            {
-                public System.Drawing.Point pt;
-                public uint mouseData;
-                public uint flags;
-                public uint time;
-                public UIntPtr dwExtraInfo;
-            }
-
-            private delegate IntPtr MouseHookProc(int code, IntPtr wParam, IntPtr lParam);
-
-            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-            private static extern IntPtr SetWindowsHookEx(int idHook, MouseHookProc proc, IntPtr module, uint threadId);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern bool UnhookWindowsHookEx(IntPtr hook);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern short GetAsyncKeyState(int key);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr WindowFromPoint(System.Drawing.Point point);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-
-            private MouseHookProc _hookProc;
-            private IntPtr _hook;
-
+            private const int WM_CONTEXTMENU = 0x007B;
             private readonly Console _owner;
             private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
             private bool _menuOpen;
             private Form _previewForm;
 
             internal GuiFloatingOpacityFilter(Console owner)
-                 internal void Install()
             {
-                _hookProc = OnMouseHook; // Keep delegate alive for the native callback.
-                _hook = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, IntPtr.Zero, 0);
-                if (_hook == IntPtr.Zero)
-                    LogTool.AddLogEntry("GUI opacity mouse hook installation failed: " +
-                        System.Runtime.InteropServices.Marshal.GetLastWin32Error(), "GUI");
-            }
-
-            public void Dispose()
-            {
-                if (_hook != IntPtr.Zero)
+                _owner = owner;
+                foreach (string value in DB.GetVars("GUI_Floating_Opacity"))
                 {
-                    UnhookWindowsHookEx(_hook);
-                    _hook = IntPtr.Zero;
+                    int slash = value.LastIndexOf('/');
+                    int percent;
+                    if (slash > 0 && int.TryParse(value.Substring(slash + 1), out percent))
+                        _opacity[value.Substring(0, slash)] = Math.Max(10, Math.Min(100, percent));
                 }
-                Application.Idle -= ApplySavedOpacity;
+                Application.Idle += ApplySavedOpacity;
             }
 
-            private IntPtr OnMouseHook(int code, IntPtr wParam, IntPtr lParam)
+            private static string WindowKey(Form form)
             {
-                if (code >= 0 && !_menuOpen &&
-                    (wParam.ToInt64() == WM_RBUTTONUP || wParam.ToInt64() == WM_NCRBUTTONUP) &&
-                    (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
+                frmMeterDisplay meter = form as frmMeterDisplay;
+                return meter != null ? "Meter_" + meter.ID : form.GetType().FullName;
+            }
+
+            private void ApplySavedOpacity(object sender, EventArgs e)
+            {
+                foreach (Form form in Application.OpenForms)
                 {
-                    MouseHookData data = (MouseHookData)System.Runtime.InteropServices.Marshal.PtrToStructure(
-                        lParam, typeof(MouseHookData));
-                    IntPtr hwnd = GetAncestor(WindowFromPoint(data.pt), GA_ROOT);
-                    uint pid;
-                    if (hwnd != IntPtr.Zero && GetWindowThreadProcessId(hwnd, out pid) != 0 &&
-                        pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id)
+                    if (form == _owner || form == _previewForm || form.IsDisposed) continue;
+                    int percent;
+                    if (_opacity.TryGetValue(WindowKey(form), out percent))
                     {
-                        Form target = Control.FromHandle(hwnd) as Form;
-                        if (target != null && target != _owner && !target.IsDisposed && target.IsHandleCreated)
-                        {
-                            _menuOpen = true;
-                            try
-                            {
-                                target.BeginInvoke((MethodInvoker)delegate
-                                {
-                                    if (!target.IsDisposed)
-                                    {
-                                        _menuOpen = false;
-                                        ShowOpacityMenu(target);
-                                    }
-                                    else _menuOpen = false;
-                                });
-                            }
-                            catch (InvalidOperationException) { _menuOpen = false; }
-                        }
-                    }
-                }
-                return CallNextHookEx(_hook, code, wParam, lParam);
-            }
-
-e alpha = percent / 100.0;
+                        double alpha = percent / 100.0;
                         if (Math.Abs(form.Opacity - alpha) > 0.001) form.Opacity = alpha;
                     }
                 }
@@ -718,26 +657,76 @@ e alpha = percent / 100.0;
                 DB.SaveVars("GUI_Floating_Opacity", state, true);
             }
 
-            public bool PreFilterMessage(ref Message message)
+            private const int WH_MOUSE_LL = 14;
+            private const int VK_SHIFT = 0x10;
+            private const uint GA_ROOT = 2;
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct MouseData
             {
-                if ((message.Msg != WM_RBUTTONDOWN && message.Msg != WM_RBUTTONUP &&
-                     message.Msg != WM_NCRBUTTONUP && message.Msg != WM_CONTEXTMENU) ||
-                    (Control.ModifierKeys & Keys.Shift) == 0 || _menuOpen)
-                    return false;
+                public System.Drawing.Point pt;
+                public uint mouseData, flags, time;
+                public UIntPtr extraInfo;
+            }
+            private delegate IntPtr MouseCallback(int code, IntPtr msg, IntPtr data);
+            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+            private static extern IntPtr SetWindowsHookEx(int id, MouseCallback callback, IntPtr module, uint thread);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern bool UnhookWindowsHookEx(IntPtr handle);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr CallNextHookEx(IntPtr handle, int code, IntPtr msg, IntPtr data);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern short GetAsyncKeyState(int key);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr WindowFromPoint(System.Drawing.Point point);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr GetAncestor(IntPtr handle, uint flags);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern uint GetWindowThreadProcessId(IntPtr handle, out uint pid);
+            private MouseCallback _callback;
+            private IntPtr _hook;
 
-                // Native child HWNDs (including custom-rendered controls) are not
-                // always directly represented by Control.FromHandle.
-                Control control = Control.FromChildHandle(message.HWnd);
-                if (control == null) return false;
-                Form target = control as Form ?? control.FindForm();
-                if (target == null || target == _owner || target.IsDisposed) return false;
-
-                // Catch the button-down before custom controls consume the up
-                // event. Non-client clicks have no client button-down message.
-                if (message.Msg == WM_RBUTTONUP || message.Msg == WM_CONTEXTMENU)
-                    return false;
-                ShowOpacityMenu(target);
-                return true;
+            internal void Install()
+            {
+                _callback = HandleMouse;
+                _hook = SetWindowsHookEx(WH_MOUSE_LL, _callback, IntPtr.Zero, 0);
+                if (_hook == IntPtr.Zero)
+                    LogTool.AddLogEntry("Opacity hook failed: " +
+                        System.Runtime.InteropServices.Marshal.GetLastWin32Error(), "GUI");
+            }
+            public void Dispose()
+            {
+                if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
+                _hook = IntPtr.Zero;
+                Application.Idle -= ApplySavedOpacity;
+            }
+            private IntPtr HandleMouse(int code, IntPtr msg, IntPtr data)
+            {
+                if (code >= 0 && !_menuOpen && msg.ToInt64() == WM_RBUTTONUP &&
+                    (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
+                {
+                    MouseData mouse = (MouseData)System.Runtime.InteropServices.Marshal.PtrToStructure(data, typeof(MouseData));
+                    IntPtr hwnd = GetAncestor(WindowFromPoint(mouse.pt), GA_ROOT);
+                    uint pid;
+                    if (hwnd != IntPtr.Zero && GetWindowThreadProcessId(hwnd, out pid) != 0 &&
+                        pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id)
+                    {
+                        Form target = Control.FromHandle(hwnd) as Form;
+                        if (target != null && target != _owner && !target.IsDisposed && target.IsHandleCreated)
+                        {
+                            _menuOpen = true;
+                            try
+                            {
+                                target.BeginInvoke((MethodInvoker)delegate
+                                {
+                                    _menuOpen = false;
+                                    if (!target.IsDisposed) ShowOpacityMenu(target);
+                                });
+                            }
+                            catch (InvalidOperationException) { _menuOpen = false; }
+                        }
+                    }
+                }
+                return CallNextHookEx(_hook, code, msg, data);
             }
 
             private void ShowOpacityMenu(Form form)
