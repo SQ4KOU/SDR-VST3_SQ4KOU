@@ -607,10 +607,6 @@ namespace Thetis
 
         private sealed class GuiFloatingOpacityFilter : IDisposable
         {
-            private const int WM_RBUTTONDOWN = 0x0204;
-            private const int WM_RBUTTONUP = 0x0205;
-            private const int WM_NCRBUTTONUP = 0x00A5;
-            private const int WM_CONTEXTMENU = 0x007B;
             private readonly Console _owner;
             private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
             private bool _menuOpen;
@@ -657,80 +653,44 @@ namespace Thetis
                 DB.SaveVars("GUI_Floating_Opacity", state, true);
             }
 
-            private const int WH_MOUSE_LL = 14;
-            private const int VK_SHIFT = 0x10;
-            private const uint GA_ROOT = 2;
-            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-            private struct MouseData
+            private readonly HashSet<Control> _wired = new HashSet<Control>();
+            private void Wire(Control control)
             {
-                public System.Drawing.Point pt;
-                public uint mouseData, flags, time;
-                public UIntPtr extraInfo;
+                if (!_wired.Add(control)) return;
+                control.MouseUp += HandleRightClick;
+                control.ControlAdded += (sender, e) => Wire(e.Control);
+                foreach (Control child in control.Controls) Wire(child);
             }
-            private delegate IntPtr MouseCallback(int code, IntPtr msg, IntPtr data);
-            [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-            private static extern IntPtr SetWindowsHookEx(int id, MouseCallback callback, IntPtr module, uint thread);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern bool UnhookWindowsHookEx(IntPtr handle);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr CallNextHookEx(IntPtr handle, int code, IntPtr msg, IntPtr data);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern short GetAsyncKeyState(int key);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr WindowFromPoint(System.Drawing.Point point);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr GetAncestor(IntPtr handle, uint flags);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern uint GetWindowThreadProcessId(IntPtr handle, out uint pid);
-            private MouseCallback _callback;
-            private IntPtr _hook;
 
             internal void Install()
             {
-                _callback = HandleMouse;
-                _hook = SetWindowsHookEx(WH_MOUSE_LL, _callback, IntPtr.Zero, 0);
-                if (_hook == IntPtr.Zero)
-                    LogTool.AddLogEntry("Opacity hook failed: " +
-                        System.Runtime.InteropServices.Marshal.GetLastWin32Error(), "GUI");
+                Application.Idle += WireOpenForms;
+                WireOpenForms(this, EventArgs.Empty);
             }
+
+            private void WireOpenForms(object sender, EventArgs e)
+            {
+                foreach (Form form in Application.OpenForms)
+                    if (form != _owner && !form.IsDisposed) Wire(form);
+            }
+
             public void Dispose()
             {
-                if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
-                _hook = IntPtr.Zero;
+                Application.Idle -= WireOpenForms;
                 Application.Idle -= ApplySavedOpacity;
+                foreach (Control control in _wired)
+                    if (!control.IsDisposed) control.MouseUp -= HandleRightClick;
+                _wired.Clear();
             }
-            private IntPtr HandleMouse(int code, IntPtr msg, IntPtr data)
+
+            private void HandleRightClick(object sender, MouseEventArgs e)
             {
-                if (code >= 0 && !_menuOpen && msg.ToInt64() == WM_RBUTTONUP &&
-                    (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
-                {
-                    MouseData mouse = (MouseData)System.Runtime.InteropServices.Marshal.PtrToStructure(data, typeof(MouseData));
-                    // Match the on-screen WinForms form, not a child/native HWND.
-                    // GPU/hosted controls may use a root handle unknown to Control.FromHandle.
-                    Form target = null;
-                    foreach (Form form in Application.OpenForms)
-                    {
-                        if (form == _owner || form.IsDisposed || !form.Visible ||
-                            !form.Bounds.Contains(mouse.pt)) continue;
-                        if (target == null || (form.TopMost && !target.TopMost))
-                            target = form;
-                    }
-                    if (target != null && target.IsHandleCreated)
-                    {
-                        _menuOpen = true;
-                        try
-                        {
-                            Form selected = target;
-                            selected.BeginInvoke((MethodInvoker)delegate
-                            {
-                                _menuOpen = false;
-                                if (!selected.IsDisposed) ShowOpacityMenu(selected);
-                            });
-                        }
-                        catch (InvalidOperationException) { _menuOpen = false; }
-                    }
-                }
-                return CallNextHookEx(_hook, code, msg, data);
+                if (_menuOpen || e.Button != MouseButtons.Right ||
+                    (Control.ModifierKeys & Keys.Shift) == 0) return;
+                Control control = sender as Control;
+                Form form = control as Form ?? control?.FindForm();
+                if (form == null || form == _owner || form.IsDisposed) return;
+                ShowOpacityMenu(form);
             }
 
             private void ShowOpacityMenu(Form form)
