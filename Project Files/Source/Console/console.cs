@@ -711,9 +711,13 @@ namespace Thetis
                     _initialKey = window.TransparencyKey;
                     _background = window.BackColor;
                     _window.Activated += OnActivated;
+                    _window.LocationChanged += OnGeometryChanged;
+                    _window.SizeChanged += OnGeometryChanged;
+                    _window.VisibleChanged += OnGeometryChanged;
                 }
 
                 private void OnActivated(object sender, EventArgs e) { Sync(true); }
+                private void OnGeometryChanged(object sender, EventArgs e) { Sync(); }
 
                 internal void Apply(int percent)
                 {
@@ -764,6 +768,9 @@ namespace Thetis
                 public void Dispose()
                 {
                     _window.Activated -= OnActivated;
+                    _window.LocationChanged -= OnGeometryChanged;
+                    _window.SizeChanged -= OnGeometryChanged;
+                    _window.VisibleChanged -= OnGeometryChanged;
                     if (_underlay != null)
                     {
                         _underlay.Close();
