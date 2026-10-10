@@ -588,6 +588,168 @@ namespace Thetis
         // ----
         #endregion
 
+
+        // GUI element opacity: native child-window composition on Windows 8+.
+        // Defaults to 100% so existing controls remain unchanged until configured.
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        private static extern int GuiOpacityGetWindowLong(IntPtr hwnd, int index);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+        private static extern int GuiOpacitySetWindowLong(IntPtr hwnd, int index, int value);
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
+
+        private const int GUI_GWL_EXSTYLE = -20;
+        private const int GUI_WS_EX_LAYERED = 0x00080000;
+        private const uint GUI_LWA_ALPHA = 2;
+        private readonly Dictionary<string, int> _guiElementOpacity = new Dictionary<string, int>(StringComparer.Ordinal);
+        private bool _guiOpacityHooksInstalled;
+
+        private void GuiOpacityInstall(object sender, EventArgs e)
+        {
+            if (_guiOpacityHooksInstalled) return;
+            _guiOpacityHooksInstalled = true;
+            foreach (string entry in DB.GetVars("GUI_Element_Opacity"))
+            {
+                int separator = entry.LastIndexOf('/');
+                int percent;
+                if (separator > 0 && int.TryParse(entry.Substring(separator + 1), out percent))
+                    _guiElementOpacity[entry.Substring(0, separator)] = Math.Max(0, Math.Min(100, percent));
+            }
+            GuiOpacityHookChildren(this);
+        }
+
+        private bool GuiOpacityExcluded(Control c)
+        {
+            // Never change the spectrum/waterfall surface or its ancestor.
+            return c == pnlDisplay || c == panelDisplay || c is Form ||
+                   string.IsNullOrEmpty(c.Name);
+        }
+
+        private void GuiOpacityHookChildren(Control parent)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                if (!GuiOpacityExcluded(c))
+                {
+                    c.MouseUp -= GuiOpacityMouseUp;
+                    c.MouseUp += GuiOpacityMouseUp;
+                    c.HandleCreated -= GuiOpacityHandleCreated;
+                    c.HandleCreated += GuiOpacityHandleCreated;
+                    GuiOpacityApply(c);
+                }
+                GuiOpacityHookChildren(c);
+            }
+            parent.ControlAdded -= GuiOpacityControlAdded;
+            parent.ControlAdded += GuiOpacityControlAdded;
+        }
+
+        private void GuiOpacityControlAdded(object sender, ControlEventArgs e)
+        {
+            if (e.Control == null) return;
+            if (!GuiOpacityExcluded(e.Control))
+            {
+                e.Control.MouseUp += GuiOpacityMouseUp;
+                e.Control.HandleCreated += GuiOpacityHandleCreated;
+                GuiOpacityApply(e.Control);
+            }
+            GuiOpacityHookChildren(e.Control);
+        }
+
+        private void GuiOpacityHandleCreated(object sender, EventArgs e)
+        {
+            GuiOpacityApply(sender as Control);
+        }
+
+        private void GuiOpacityApply(Control c)
+        {
+            if (c == null || GuiOpacityExcluded(c) || !c.IsHandleCreated) return;
+            int percent;
+            if (!_guiElementOpacity.TryGetValue(c.Name, out percent)) percent = 100;
+            int style = GuiOpacityGetWindowLong(c.Handle, GUI_GWL_EXSTYLE);
+            if (percent >= 100)
+            {
+                if ((style & GUI_WS_EX_LAYERED) != 0)
+                    GuiOpacitySetWindowLong(c.Handle, GUI_GWL_EXSTYLE, style & ~GUI_WS_EX_LAYERED);
+            }
+            else
+            {
+                if ((style & GUI_WS_EX_LAYERED) == 0)
+                    GuiOpacitySetWindowLong(c.Handle, GUI_GWL_EXSTYLE, style | GUI_WS_EX_LAYERED);
+                SetLayeredWindowAttributes(c.Handle, 0, (byte)((percent * 255 + 50) / 100), GUI_LWA_ALPHA);
+            }
+        }
+
+        private void GuiOpacitySave()
+        {
+            List<string> state = new List<string>();
+            foreach (KeyValuePair<string, int> entry in _guiElementOpacity)
+                if (entry.Value != 100) state.Add(entry.Key + "/" + entry.Value);
+            DB.SaveVars("GUI_Element_Opacity", state, true);
+        }
+
+        private void GuiOpacityMouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right || (Control.ModifierKeys & Keys.Shift) != Keys.Shift) return;
+            Control selected = sender as Control;
+            if (selected == null || GuiOpacityExcluded(selected)) return;
+            ContextMenuStrip menu = new ContextMenuStrip();
+            ToolStripLabel title = new ToolStripLabel("Opacity: " + selected.Name);
+            menu.Items.Add(title);
+            TrackBar slider = new TrackBar();
+            slider.Minimum = 0;
+            slider.Maximum = 100;
+            slider.TickFrequency = 10;
+            slider.Width = 210;
+            int percent;
+            slider.Value = _guiElementOpacity.TryGetValue(selected.Name, out percent) ? percent : 100;
+            ToolStripControlHost host = new ToolStripControlHost(slider);
+            menu.Items.Add(host);
+            ToolStripLabel value = new ToolStripLabel(slider.Value + "%");
+            menu.Items.Add(value);
+            slider.ValueChanged += (o, args) =>
+            {
+                _guiElementOpacity[selected.Name] = slider.Value;
+                GuiOpacityApply(selected);
+                value.Text = slider.Value + "%";
+            };
+            slider.MouseUp += (o, args) => GuiOpacitySave();
+            ToolStripMenuItem reset = new ToolStripMenuItem("Reset opacity (100%)");
+            reset.Click += (o, args) =>
+            {
+                _guiElementOpacity.Remove(selected.Name);
+                GuiOpacityApply(selected);
+                GuiOpacitySave();
+            };
+            menu.Items.Add(reset);
+            ToolStripMenuItem all = new ToolStripMenuItem("Apply to all GUI elements");
+            all.Click += (o, args) =>
+            {
+                GuiOpacityApplyAll(this, slider.Value);
+                GuiOpacitySave();
+            };
+            menu.Items.Add(all);
+            menu.Closed += (o, args) =>
+            {
+                GuiOpacitySave();
+                menu.Dispose();
+            };
+            menu.Show(selected, e.Location);
+        }
+
+        private void GuiOpacityApplyAll(Control parent, int percent)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                if (!GuiOpacityExcluded(c))
+                {
+                    _guiElementOpacity[c.Name] = percent;
+                    GuiOpacityApply(c);
+                }
+                GuiOpacityApplyAll(c, percent);
+            }
+        }
+
         #region Constructor and Destructor
         // ======================================================
         // Constructor and Destructor
@@ -750,6 +912,7 @@ namespace Thetis
 
             InitializeComponent();								// Windows Forms Generated Code
             Common.DoubleBufferAll(this, true);
+            this.Shown += GuiOpacityInstall;
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,
             // to the right of CTUN (free slot at 52,51 in panelDisplay2)
