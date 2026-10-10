@@ -999,7 +999,11 @@ namespace Thetis
 
             private void ApplySavedOpacity(object sender, EventArgs e)
             {
-                foreach (Form form in Application.OpenForms)
+                // An underlay may be shown on the first pass. Never mutate the
+                // Application.OpenForms collection while enumerating it.
+                List<Form> snapshot = new List<Form>();
+                foreach (Form openForm in Application.OpenForms) snapshot.Add(openForm);
+                foreach (Form form in snapshot)
                 {
                     if (form == _owner || form == _previewForm ||
                         form is WindowUnderlay || form.IsDisposed) continue;
