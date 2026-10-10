@@ -654,18 +654,21 @@ namespace Thetis
             }
 
             private readonly HashSet<Control> _wired = new HashSet<Control>();
+            private System.Windows.Forms.Timer _registrationTimer;
             private void Wire(Control control)
             {
                 if (!_wired.Add(control)) return;
-                control.MouseUp += HandleRightClick;
+                control.MouseDown += HandleRightClick;
                 control.ControlAdded += (sender, e) => Wire(e.Control);
                 foreach (Control child in control.Controls) Wire(child);
             }
 
             internal void Install()
             {
-                Application.Idle += WireOpenForms;
                 WireOpenForms(this, EventArgs.Empty);
+                _registrationTimer = new System.Windows.Forms.Timer { Interval = 250 };
+                _registrationTimer.Tick += WireOpenForms;
+                _registrationTimer.Start();
             }
 
             private void WireOpenForms(object sender, EventArgs e)
@@ -676,10 +679,16 @@ namespace Thetis
 
             public void Dispose()
             {
-                Application.Idle -= WireOpenForms;
+                if (_registrationTimer != null)
+                {
+                    _registrationTimer.Stop();
+                    _registrationTimer.Tick -= WireOpenForms;
+                    _registrationTimer.Dispose();
+                    _registrationTimer = null;
+                }
                 Application.Idle -= ApplySavedOpacity;
                 foreach (Control control in _wired)
-                    if (!control.IsDisposed) control.MouseUp -= HandleRightClick;
+                    if (!control.IsDisposed) control.MouseDown -= HandleRightClick;
                 _wired.Clear();
             }
 
