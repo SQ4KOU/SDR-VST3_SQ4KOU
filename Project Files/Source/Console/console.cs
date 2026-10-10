@@ -759,7 +759,7 @@ namespace Thetis
             private static extern int GetWindowLongOpacity(IntPtr h, int index);
             [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLong")]
             private static extern int SetWindowLongOpacity(IntPtr h, int index, int value);
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetLayeredWindowAttributes", SetLastError = true)]
             private static extern bool SetLayeredWindowAttributesOpacity(IntPtr h, uint key, byte alpha, uint flags);
 
             private void ShowOpacityMenu(Form form)
