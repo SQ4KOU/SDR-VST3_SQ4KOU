@@ -607,7 +607,10 @@ namespace Thetis
 
         private sealed class GuiFloatingOpacityFilter : IMessageFilter
         {
+            private const int WM_RBUTTONDOWN = 0x0204;
             private const int WM_RBUTTONUP = 0x0205;
+            private const int WM_NCRBUTTONUP = 0x00A5;
+            private const int WM_CONTEXTMENU = 0x007B;
             private readonly Console _owner;
             private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
             private bool _menuOpen;
@@ -656,12 +659,22 @@ namespace Thetis
 
             public bool PreFilterMessage(ref Message message)
             {
-                if (message.Msg != WM_RBUTTONUP || (Control.ModifierKeys & Keys.Shift) == 0 || _menuOpen)
+                if ((message.Msg != WM_RBUTTONDOWN && message.Msg != WM_RBUTTONUP &&
+                     message.Msg != WM_NCRBUTTONUP && message.Msg != WM_CONTEXTMENU) ||
+                    (Control.ModifierKeys & Keys.Shift) == 0 || _menuOpen)
                     return false;
-                Control control = Control.FromHandle(message.HWnd);
+
+                // Native child HWNDs (including custom-rendered controls) are not
+                // always directly represented by Control.FromHandle.
+                Control control = Control.FromChildHandle(message.HWnd);
                 if (control == null) return false;
-                Form target = control.FindForm();
+                Form target = control as Form ?? control.FindForm();
                 if (target == null || target == _owner || target.IsDisposed) return false;
+
+                // Catch the button-down before custom controls consume the up
+                // event. Non-client clicks have no client button-down message.
+                if (message.Msg == WM_RBUTTONUP || message.Msg == WM_CONTEXTMENU)
+                    return false;
                 ShowOpacityMenu(target);
                 return true;
             }
