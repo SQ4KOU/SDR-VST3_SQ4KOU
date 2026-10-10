@@ -749,6 +749,7 @@ namespace Thetis
             LogTool.AddLogEntry("Initialising components...", "COMP");
 
             InitializeComponent();								// Windows Forms Generated Code
+            this.Shown += Console_Shown_AlwaysOnBottom;
             Common.DoubleBufferAll(this, true);
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,
@@ -28262,7 +28263,7 @@ namespace Thetis
                     radio.GetDSPRX(0, 0).SpectrumPreFilter = true;
                     radio.GetDSPRX(1, 0).SpectrumPreFilter = true;
 
-                    pnlDisplay.BringToFront();
+                    pnlDisplay.SendToBack();
 
                     break;
                 case DisplayMode.PANADAPTER:
@@ -28276,7 +28277,7 @@ namespace Thetis
                     radio.GetDSPRX(0, 0).SpectrumPreFilter = true;
                     radio.GetDSPRX(1, 0).SpectrumPreFilter = true;
 
-                    pnlDisplay.BringToFront();
+                    pnlDisplay.SendToBack();
 
                     break;
                 case DisplayMode.SPECTRUM:
@@ -37817,8 +37818,47 @@ namespace Thetis
 
         #endregion
 
+        // The bandscope/waterfall is a child of the main Console form.
+        // Keep both its child Z-order and the host window below other windows.
+        private const int WM_WINDOWPOSCHANGING_BOTTOM = 0x0046;
+        private const uint SWP_NOZORDER_BOTTOM = 0x0004;
+        private static readonly IntPtr HWND_BOTTOM_CONSOLE = new IntPtr(1);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ConsoleWindowPos
+        {
+            public IntPtr hwnd, hwndInsertAfter;
+            public int x, y, cx, cy;
+            public uint flags;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
+        private static extern bool PutConsoleAtBottom(
+            IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+        private void Console_Shown_AlwaysOnBottom(object sender, EventArgs e)
+        {
+            // No movement, resize or activation: change Z-order only.
+            PutConsoleAtBottom(this.Handle, HWND_BOTTOM_CONSOLE, 0, 0, 0, 0,
+                0x0001 | 0x0002 | 0x0010);
+            pnlDisplay.SendToBack();
+        }
+
         protected override void WndProc(ref Message m)
         {
+            // Enforce the bottom Z-order before Windows applies activation or
+            // move/resize requests. No timers, hooks or repaint loops.
+            if (m.Msg == WM_WINDOWPOSCHANGING_BOTTOM && m.LParam != IntPtr.Zero)
+            {
+                ConsoleWindowPos pos = Marshal.PtrToStructure<ConsoleWindowPos>(m.LParam);
+                if ((pos.flags & SWP_NOZORDER_BOTTOM) == 0 &&
+                    pos.hwndInsertAfter != HWND_BOTTOM_CONSOLE)
+                {
+                    pos.hwndInsertAfter = HWND_BOTTOM_CONSOLE;
+                    Marshal.StructureToPtr(pos, m.LParam, false);
+                }
+            }
+
             const int WM_QUERYENDSESSION = 0x0011;
             // Listen for operating system messages.
 
