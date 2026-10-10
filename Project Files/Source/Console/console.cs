@@ -705,25 +705,29 @@ namespace Thetis
                     (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
                 {
                     MouseData mouse = (MouseData)System.Runtime.InteropServices.Marshal.PtrToStructure(data, typeof(MouseData));
-                    IntPtr hwnd = GetAncestor(WindowFromPoint(mouse.pt), GA_ROOT);
-                    uint pid;
-                    if (hwnd != IntPtr.Zero && GetWindowThreadProcessId(hwnd, out pid) != 0 &&
-                        pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id)
+                    // Match the on-screen WinForms form, not a child/native HWND.
+                    // GPU/hosted controls may use a root handle unknown to Control.FromHandle.
+                    Form target = null;
+                    foreach (Form form in Application.OpenForms)
                     {
-                        Form target = Control.FromHandle(hwnd) as Form;
-                        if (target != null && target != _owner && !target.IsDisposed && target.IsHandleCreated)
+                        if (form == _owner || form.IsDisposed || !form.Visible ||
+                            !form.Bounds.Contains(mouse.pt)) continue;
+                        if (target == null || (form.TopMost && !target.TopMost))
+                            target = form;
+                    }
+                    if (target != null && target.IsHandleCreated)
+                    {
+                        _menuOpen = true;
+                        try
                         {
-                            _menuOpen = true;
-                            try
+                            Form selected = target;
+                            selected.BeginInvoke((MethodInvoker)delegate
                             {
-                                target.BeginInvoke((MethodInvoker)delegate
-                                {
-                                    _menuOpen = false;
-                                    if (!target.IsDisposed) ShowOpacityMenu(target);
-                                });
-                            }
-                            catch (InvalidOperationException) { _menuOpen = false; }
+                                _menuOpen = false;
+                                if (!selected.IsDisposed) ShowOpacityMenu(selected);
+                            });
                         }
+                        catch (InvalidOperationException) { _menuOpen = false; }
                     }
                 }
                 return CallNextHookEx(_hook, code, msg, data);
