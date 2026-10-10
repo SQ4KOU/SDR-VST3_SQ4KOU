@@ -588,6 +588,293 @@ namespace Thetis
         // ----
         #endregion
 
+        // Only the background of standard WinForms windows is blended.
+        // Meter DXGI swapchains must use a separate DirectComposition renderer.
+        private WinFormsBackgroundOpacity _windowBackgroundOpacity;
+
+        private void InstallWinFormsBackgroundOpacity(object sender, EventArgs e)
+        {
+            if (_windowBackgroundOpacity != null) return;
+            _windowBackgroundOpacity = new WinFormsBackgroundOpacity(this);
+            _windowBackgroundOpacity.Install();
+            this.FormClosed += (o, args) =>
+            {
+                _windowBackgroundOpacity.Dispose();
+                _windowBackgroundOpacity = null;
+            };
+        }
+
+        private sealed class WinFormsBackgroundOpacity : IMessageFilter, IDisposable
+        {
+            private const int WM_RBUTTONUP = 0x0205, WM_NCRBUTTONUP = 0x00A5;
+            private const int WM_NCHITTEST = 0x0084, HTTRANSPARENT = -1;
+            private const int WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
+            private const uint SWP_NOSIZE = 1, SWP_NOMOVE = 2, SWP_NOACTIVATE = 0x10;
+            private const string Table = "GUI_Background_Opacity";
+            private static readonly Color TransparentBackgroundKey = Color.FromArgb(255, 1, 0, 1);
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+            private sealed class BackgroundForm : Form
+            {
+                internal BackgroundForm()
+                {
+                    FormBorderStyle = FormBorderStyle.None;
+                    ShowInTaskbar = false;
+                    StartPosition = FormStartPosition.Manual;
+                    Enabled = false;
+                }
+                protected override bool ShowWithoutActivation { get { return true; } }
+                protected override CreateParams CreateParams
+                {
+                    get
+                    {
+                        CreateParams cp = base.CreateParams;
+                        cp.ExStyle |= WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                        return cp;
+                    }
+                }
+                protected override void WndProc(ref Message m)
+                {
+                    if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)HTTRANSPARENT; return; }
+                    base.WndProc(ref m);
+                }
+            }
+
+            private sealed class BackgroundEffect : IDisposable
+            {
+                private readonly Form _form;
+                private readonly Color _originalColor;
+                private readonly Color _originalKey;
+                private BackgroundForm _backing;
+                private int _percent = 100;
+                internal BackgroundEffect(Form form)
+                {
+                    _form = form;
+                    _originalColor = form.BackColor;
+                    _originalKey = form.TransparencyKey;
+                    _form.LocationChanged += GeometryChanged;
+                    _form.SizeChanged += GeometryChanged;
+                    _form.VisibleChanged += GeometryChanged;
+                    _form.Activated += FormActivated;
+                    _form.HandleCreated += HandleCreated;
+                }
+                private void GeometryChanged(object o, EventArgs e) { Align(false); }
+                private void FormActivated(object o, EventArgs e) { Align(true); }
+                private void HandleCreated(object o, EventArgs e)
+                {
+                    if (_percent < 100) Apply(_percent);
+                }
+                internal void Apply(int percent)
+                {
+                    if (_form.IsDisposed) return;
+                    _percent = percent;
+                    if (percent >= 100)
+                    {
+                        _form.TransparencyKey = _originalKey;
+                        _form.BackColor = _originalColor;
+                        if (_backing != null) _backing.Hide();
+                        return;
+                    }
+                    if (_backing == null || _backing.IsDisposed) _backing = new BackgroundForm();
+                    _backing.BackColor = _originalColor;
+                    _backing.Opacity = percent / 100.0;
+                    // A reserved key is distinct from the original background
+                    // and avoids the previous bug that keyed out black controls.
+                    _form.BackColor = TransparentBackgroundKey;
+                    _form.TransparencyKey = TransparentBackgroundKey;
+                    Align(true);
+                }
+                private void Align(bool reorder)
+                {
+                    if (_backing == null || _backing.IsDisposed || _form.IsDisposed) return;
+                    if (_percent >= 100 || !_form.Visible || _form.WindowState == FormWindowState.Minimized)
+                    {
+                        _backing.Hide();
+                        return;
+                    }
+                    Rectangle rect = new Rectangle(_form.PointToScreen(Point.Empty), _form.ClientSize);
+                    if (rect.Width <= 0 || rect.Height <= 0) { _backing.Hide(); return; }
+                    bool moved = _backing.Bounds != rect, shown = !_backing.Visible;
+                    if (moved) _backing.Bounds = rect;
+                    if (shown) _backing.Show();
+                    if (moved || shown || reorder)
+                        SetWindowPos(_backing.Handle, _form.Handle, 0, 0, 0, 0,
+                            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+                }
+                public void Dispose()
+                {
+                    _form.LocationChanged -= GeometryChanged;
+                    _form.SizeChanged -= GeometryChanged;
+                    _form.VisibleChanged -= GeometryChanged;
+                    _form.Activated -= FormActivated;
+                    _form.HandleCreated -= HandleCreated;
+                    if (_backing != null) { _backing.Close(); _backing.Dispose(); _backing = null; }
+                    if (!_form.IsDisposed)
+                    {
+                        _form.TransparencyKey = _originalKey;
+                        _form.BackColor = _originalColor;
+                    }
+                }
+            }
+
+            private readonly Console _owner;
+            private readonly Dictionary<string, int> _saved = new Dictionary<string, int>(StringComparer.Ordinal);
+            private readonly Dictionary<Form, BackgroundEffect> _effects = new Dictionary<Form, BackgroundEffect>();
+            private System.Windows.Forms.Timer _formsTimer;
+            private bool _menuOpen, _disposed;
+
+            internal WinFormsBackgroundOpacity(Console owner) { _owner = owner; }
+            private bool Supported(Form f)
+            {
+                return f != null && f != _owner && !f.IsDisposed &&
+                    !(f is BackgroundForm) && !(f is frmMeterDisplay);
+            }
+            private static string WindowKey(Form f) { return f.GetType().FullName; }
+            internal void Install()
+            {
+                foreach (KeyValuePair<string, string> kv in DB.GetVarsDictionary(Table))
+                {
+                    int value;
+                    if (int.TryParse(kv.Value, out value))
+                        _saved[kv.Key] = Math.Max(10, Math.Min(100, value));
+                }
+                Application.AddMessageFilter(this);
+                _formsTimer = new System.Windows.Forms.Timer { Interval = 750 };
+                _formsTimer.Tick += CheckForms;
+                _formsTimer.Start();
+                CheckForms(this, EventArgs.Empty);
+            }
+            private BackgroundEffect Effect(Form f)
+            {
+                BackgroundEffect effect;
+                if (!_effects.TryGetValue(f, out effect))
+                {
+                    effect = new BackgroundEffect(f);
+                    _effects[f] = effect;
+                }
+                return effect;
+            }
+            private void CheckForms(object o, EventArgs e)
+            {
+                List<Form> snapshot = new List<Form>();
+                foreach (Form f in Application.OpenForms) snapshot.Add(f);
+                foreach (Form f in snapshot)
+                {
+                    if (!Supported(f) || _effects.ContainsKey(f)) continue;
+                    int value;
+                    if (_saved.TryGetValue(WindowKey(f), out value) && value < 100)
+                        Effect(f).Apply(value);
+                }
+                List<Form> gone = new List<Form>();
+                foreach (KeyValuePair<Form, BackgroundEffect> entry in _effects)
+                    if (entry.Key.IsDisposed) gone.Add(entry.Key);
+                foreach (Form f in gone) { _effects[f].Dispose(); _effects.Remove(f); }
+            }
+            public bool PreFilterMessage(ref Message m)
+            {
+                if (_disposed || _menuOpen || (m.Msg != WM_RBUTTONUP && m.Msg != WM_NCRBUTTONUP) ||
+                    (Control.ModifierKeys & Keys.Shift) == 0) return false;
+                Control c = Control.FromChildHandle(m.HWnd);
+                Form f = c as Form ?? c?.FindForm();
+                if (!Supported(f)) return false;
+                _menuOpen = true;
+                if (_owner.IsHandleCreated && !_owner.IsDisposed)
+                    _owner.BeginInvoke((Action)(() =>
+                    {
+                        if (_disposed || f.IsDisposed) { _menuOpen = false; return; }
+                        ShowOpacityMenu(f);
+                    }));
+                else _menuOpen = false;
+                return false;
+            }
+            private static bool SaveToDisk(string key, int percent)
+            {
+                Dictionary<string, string> data = DB.GetVarsDictionary(Table);
+                data[key] = percent.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                DB.SaveVarsDictionary(Table, ref data);
+                string cached;
+                if (!DB.GetVarsDictionary(Table).TryGetValue(key, out cached) ||
+                    cached != data[key] || !DB.WriteDB(DB.FileName)) return false;
+                try
+                {
+                    System.Data.DataSet file = new System.Data.DataSet();
+                    file.ReadXml(DB.FileName);
+                    if (!file.Tables.Contains(Table)) return false;
+                    foreach (System.Data.DataRow row in file.Tables[Table].Rows)
+                        if (row["Key"].ToString() == key && row["Value"].ToString() == data[key])
+                            return true;
+                }
+                catch (Exception ex) { Common.LogException(ex); }
+                return false;
+            }
+            private void ShowOpacityMenu(Form form)
+            {
+                string key = WindowKey(form);
+                int original;
+                if (!_saved.TryGetValue(key, out original)) original = 100;
+                BackgroundEffect background = Effect(form);
+                bool committed = false;
+                ContextMenuStrip menu = new ContextMenuStrip { AutoClose = false };
+                TrackBar bar = new TrackBar
+                {
+                    Minimum = 10, Maximum = 100, TickFrequency = 10, Width = 190, Value = original
+                };
+                ToolStripLabel valueLabel = new ToolStripLabel("Background opacity: " + original + "%");
+                menu.Items.Add(valueLabel);
+                menu.Items.Add(new ToolStripControlHost(bar));
+                bar.ValueChanged += (o, e) =>
+                {
+                    background.Apply(bar.Value);
+                    valueLabel.Text = "Background opacity: " + bar.Value + "%";
+                };
+                ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
+                reset.Click += (o, e) => bar.Value = 100;
+                menu.Items.Add(reset);
+                ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
+                apply.Click += (o, e) =>
+                {
+                    if (!SaveToDisk(key, bar.Value))
+                    {
+                        MessageBox.Show("Background opacity could not be saved and verified.",
+                            "SDR-VST3", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    _saved[key] = bar.Value;
+                    committed = true;
+                    menu.Close();
+                };
+                menu.Items.Add(apply);
+                ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
+                cancel.Click += (o, e) => menu.Close();
+                menu.Items.Add(cancel);
+                menu.Closed += (o, e) =>
+                {
+                    if (!committed && !form.IsDisposed) background.Apply(original);
+                    _menuOpen = false;
+                    // Release only after ToolStripItem.OnClick has returned.
+                    if (_owner.IsHandleCreated && !_owner.IsDisposed)
+                        _owner.BeginInvoke((Action)(() => menu.Dispose()));
+                };
+                menu.Show(Cursor.Position);
+            }
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                Application.RemoveMessageFilter(this);
+                if (_formsTimer != null)
+                {
+                    _formsTimer.Stop();
+                    _formsTimer.Tick -= CheckForms;
+                    _formsTimer.Dispose();
+                    _formsTimer = null;
+                }
+                foreach (BackgroundEffect e in _effects.Values) e.Dispose();
+                _effects.Clear();
+            }
+        }
+
         #region Constructor and Destructor
         // ======================================================
         // Constructor and Destructor
@@ -748,7 +1035,8 @@ namespace Thetis
             Splash.SetStatus("Initializing Components");        // Set progress point
             LogTool.AddLogEntry("Initialising components...", "COMP");
 
-            InitializeComponent();								// Windows Forms Generated Code
+            InitializeComponent();
+            this.Shown += InstallWinFormsBackgroundOpacity;								// Windows Forms Generated Code
             Common.DoubleBufferAll(this, true);
 
             // '3D Pan' toggle button in the display toolbar — sits below Peak,
