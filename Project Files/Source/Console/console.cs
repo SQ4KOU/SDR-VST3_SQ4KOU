@@ -751,7 +751,8 @@ namespace Thetis
                     if (!applied || bar.Value == 100)
                         SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original);
                     _menuOpen = false;
-                    menu.Dispose();
+                    // WinForms still processes ToolStrip item click after Closed.
+                    // Do not dispose the menu synchronously here.
                 };
                 menu.Show(Cursor.Position);
             }
