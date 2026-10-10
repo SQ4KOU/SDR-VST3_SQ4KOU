@@ -665,6 +665,7 @@ namespace Thetis
 
             internal void Install()
             {
+                Wire(_owner);
                 WireOpenForms(this, EventArgs.Empty);
                 _registrationTimer = new System.Windows.Forms.Timer { Interval = 250 };
                 _registrationTimer.Tick += WireOpenForms;
@@ -698,9 +699,68 @@ namespace Thetis
                     (Control.ModifierKeys & Keys.Shift) == 0) return;
                 Control control = sender as Control;
                 Form form = control as Form ?? control?.FindForm();
-                if (form == null || form == _owner || form.IsDisposed) return;
+                if (form == null || form.IsDisposed) return;
+                if (form == _owner)
+                {
+                    // The console's child controls must receive the gesture too.
+                    // Never change the opacity of the main display window.
+                    if (control == _owner || control == _owner.pnlDisplay ||
+                        control == _owner.panelDisplay ||
+                        _owner.pnlDisplay.Contains(control) ||
+                        _owner.panelDisplay.Contains(control))
+                        return;
+                    ShowControlOpacityMenu(control);
+                    return;
+                }
                 ShowOpacityMenu(form);
             }
+
+            private void ShowControlOpacityMenu(Control control)
+            {
+                // Dedicated menu for controls within the main console.
+                // Use native child-window alpha, never Form.Opacity on the console.
+                if (!control.IsHandleCreated || _menuOpen) return;
+                _menuOpen = true;
+                const int GWL_EXSTYLE = -20;
+                const int WS_EX_LAYERED = 0x80000;
+                const uint LWA_ALPHA = 2;
+                ContextMenuStrip menu = new ContextMenuStrip();
+                int original = GetWindowLongOpacity(control.Handle, GWL_EXSTYLE);
+                int value = 100;
+                TrackBar bar = new TrackBar { Minimum = 10, Maximum = 100, Value = value, Width = 200 };
+                menu.Items.Add(new ToolStripLabel("Opacity: " + control.Name));
+                menu.Items.Add(new ToolStripControlHost(bar));
+                bar.ValueChanged += (o, e) =>
+                {
+                    SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original | WS_EX_LAYERED);
+                    SetLayeredWindowAttributesOpacity(control.Handle, 0,
+                        (byte)((bar.Value * 255) / 100), LWA_ALPHA);
+                };
+                ToolStripMenuItem reset = new ToolStripMenuItem("Reset 100%");
+                reset.Click += (o, e) => bar.Value = 100;
+                menu.Items.Add(reset);
+                bool applied = false;
+                ToolStripMenuItem apply = new ToolStripMenuItem("Apply");
+                apply.Click += (o, e) => { applied = true; menu.Close(); };
+                menu.Items.Add(apply);
+                ToolStripMenuItem cancel = new ToolStripMenuItem("Cancel");
+                cancel.Click += (o, e) => menu.Close();
+                menu.Items.Add(cancel);
+                menu.Closed += (o, e) =>
+                {
+                    if (!applied || bar.Value == 100)
+                        SetWindowLongOpacity(control.Handle, GWL_EXSTYLE, original);
+                    _menuOpen = false;
+                    menu.Dispose();
+                };
+                menu.Show(Cursor.Position);
+            }
+            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+            private static extern int GetWindowLongOpacity(IntPtr h, int index);
+            [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+            private static extern int SetWindowLongOpacity(IntPtr h, int index, int value);
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern bool SetLayeredWindowAttributesOpacity(IntPtr h, uint key, byte alpha, uint flags);
 
             private void ShowOpacityMenu(Form form)
             {
