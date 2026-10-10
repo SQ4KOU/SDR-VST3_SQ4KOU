@@ -611,6 +611,7 @@ namespace Thetis
             private readonly Console _owner;
             private readonly Dictionary<string, int> _opacity = new Dictionary<string, int>(StringComparer.Ordinal);
             private bool _menuOpen;
+            private Form _previewForm;
 
             internal GuiFloatingOpacityFilter(Console owner)
             {
@@ -635,7 +636,7 @@ namespace Thetis
             {
                 foreach (Form form in Application.OpenForms)
                 {
-                    if (form == _owner || form.IsDisposed) continue;
+                    if (form == _owner || form == _previewForm || form.IsDisposed) continue;
                     int percent;
                     if (_opacity.TryGetValue(WindowKey(form), out percent))
                     {
@@ -668,6 +669,7 @@ namespace Thetis
             private void ShowOpacityMenu(Form form)
             {
                 _menuOpen = true;
+                _previewForm = form;
                 string key = WindowKey(form);
                 int previous;
                 if (!_opacity.TryGetValue(key, out previous)) previous = 100;
@@ -708,6 +710,7 @@ namespace Thetis
                 menu.Closed += (o, e) =>
                 {
                     if (!applied && !form.IsDisposed) form.Opacity = previous / 100.0;
+                    _previewForm = null;
                     _menuOpen = false;
                 };
                 menu.Show(Cursor.Position);
