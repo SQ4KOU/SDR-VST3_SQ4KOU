@@ -953,7 +953,10 @@ namespace Thetis
                 if (control.FindForm() == _owner &&
                     _controlOpacity.TryGetValue(ControlKey(control), out value))
                     ApplyControl(control, value);
-                foreach (Control child in control.Controls) Wire(child);
+                // Adding a translucent sibling can modify Controls while we walk it.
+                List<Control> children = new List<Control>();
+                foreach (Control child in control.Controls) children.Add(child);
+                foreach (Control child in children) Wire(child);
             }
 
             private void OnControlAdded(object sender, ControlEventArgs e) { Wire(e.Control); }
